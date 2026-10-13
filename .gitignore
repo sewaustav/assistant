@@ -1,0 +1,99 @@
+# --- Артефакты сборки ---
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# --- Go ---
+# Бинарники, собранные go build
+assistant
+assistant.exe
+
+# Профилировка и покрытие
+*.prof
+*.cover
+*.coverprofile
+coverage.txt
+coverage.html
+
+# go.work (если используешь workspaces, но обычно не коммитят)
+go.work
+go.work.sum
+
+# --- Временные файлы ---
+*.log
+*.pid
+*.tmp
+*.swp
+*.swo
+*~
+
+# --- IDE / редакторы ---
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains (GoLand, IntelliJ)
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Zed
+.zed/
+!.zed/settings.json
+
+# Vim / Neovim
+*.vim
+.netrwhist
+.viminfo
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# --- OS ---
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# --- Окружение ---
+.env
+.env.local
+.env.*.local
+*.env
+
+# --- Модели и данные (если будешь качать Vosk/GigaAM локально) ---
+/models/
+*.gguf
+*.onnx
+*.bin
+*.ppn
