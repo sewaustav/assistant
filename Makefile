@@ -1,5 +1,5 @@
 BINARY_NAME   := assistant
-MAIN_PATH     := ./cmd/assistant
+MAIN_PATH     := ./cmd/assistant_app
 BUILD_DIR     := ./bin
 GO            := go
 CARGO_BIN     := $(HOME)/.cargo/bin
@@ -62,9 +62,15 @@ start: build stop-gigastt
 		sleep 1; \
 	done
 	@echo ">>> Даю модели время загрузиться (3 сек)..."
-	@sleep 3
+	@sleep 10
 	@echo ">>> Запуск приложения..."
 	@$(BUILD_DIR)/$(BINARY_NAME)
+
+.PHONY: check-tts
+check-tts:
+	@test -f pkg/tts/assets/ru_RU-irina-medium.onnx || (echo "Нет модели TTS" && exit 1)
+	@test -f pkg/tts/assets/ru_RU-irina-medium.onnx.json || (echo "Нет конфига TTS" && exit 1)
+	@echo ">>> TTS-ресурсы на месте"
 
 .PHONY: start-gigastt
 start-gigastt: stop-gigastt

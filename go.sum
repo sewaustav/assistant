@@ -2,3 +2,9 @@ github.com/gen2brain/malgo v0.11.26 h1:k5WcPIKw1bbJAbPqrvNPt7nehPLoaPNcOFde2+eru
 github.com/gen2brain/malgo v0.11.26/go.mod h1:xLVG3ROA33Bzol1quF3e4ehqcFuqh8QK4B8T6LQUs/M=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
+github.com/piper-tts-go/piper-bin-linux v0.0.0-20250207070605-65b3d522fc2b h1:21iTkOz2K5eLzXIvqx1VX3qUDwzMZwT4BPz6imgZYx8=
+github.com/piper-tts-go/piper-bin-linux v0.0.0-20250207070605-65b3d522fc2b/go.mod h1:FpZ0cVpO2SQa1LeEmXsRvzDf+BoIKZIxXxqp34jCYzs=
+github.com/piper-tts-go/piper-bin-windows v0.0.0-20250207070639-a63ffcaf5010 h1:MyUrAkRJt+NmyUeKtPc/I4RG53sxhtuFaUbB1CYsQOM=
+github.com/piper-tts-go/piper-bin-windows v0.0.0-20250207070639-a63ffcaf5010/go.mod h1:SUcygE1o62wpM2u3+sFm3rrfHcnFgm3MlJYVfeZjyN0=
+github.com/piper-tts-go/piper-go-asset v0.0.0-20250207060839-195517bfd89a h1:DHy7t+8uRQacYwVRzdDfBnjQsXdGvdbM/E5Q8LLivOk=
+github.com/piper-tts-go/piper-go-asset v0.0.0-20250207060839-195517bfd89a/go.mod h1:lc+35/17HUfIpDRLCpeJVbduMtL1bGC/4yNKKkL3Uac=

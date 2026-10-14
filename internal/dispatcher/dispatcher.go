@@ -7,6 +7,7 @@ import (
 	"log"
 	"sync"
 	"time"
+
 )
 
 // GigaSTTMessage — структура сообщения от gigastt.
@@ -35,6 +36,7 @@ type Dispatcher struct {
 }
 
 func New(textChan <-chan string, stopFn func()) *Dispatcher {
+
 	return &Dispatcher{
 		state:    &State{},
 		textChan: textChan,
@@ -94,17 +96,6 @@ func (d *Dispatcher) handleText(ctx context.Context, text string) {
 	d.state.mu.Unlock()
 
 	switch cmd.Type {
-	case CmdWeather:
-		d.weather()
-	case CmdTime:
-		d.currentTime()
-	case CmdExit:
-		log.Println("[dispatcher] Команда выхода.")
-		if d.stopFn != nil {
-			d.stopFn()
-		}
-	case CmdUnknown:
-		log.Printf("[dispatcher] Неизвестная команда: %q", text)
 	}
 }
 
