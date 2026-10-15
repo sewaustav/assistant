@@ -3,10 +3,11 @@ package dispatcher
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"sync"
 	"time"
+
+	"github.com/sewaustav/assistant/pkg/tts"
 
 )
 
@@ -33,14 +34,26 @@ type Dispatcher struct {
 	state    *State
 	textChan <-chan string
 	stopFn   func()
+	tts      *tts.Client
 }
 
 func New(textChan <-chan string, stopFn func()) *Dispatcher {
+	ttsClient, err := tts.New("")
+	if err != nil {
+		log.Fatalf("TTS init: %v", err)
+	}
 
 	return &Dispatcher{
 		state:    &State{},
 		textChan: textChan,
 		stopFn:   stopFn,
+		tts:      ttsClient,
+	}
+}
+
+func (d *Dispatcher) Close() {
+	if d.tts != nil {
+		d.tts.Close()
 	}
 }
 
@@ -87,42 +100,17 @@ func (d *Dispatcher) handleRaw(ctx context.Context, raw string) {
 
 // handleText — обработка финального текста как команды.
 func (d *Dispatcher) handleText(ctx context.Context, text string) {
-	cmd := ParseCommand(text)
-	log.Printf("[dispatcher] Распознано: %q -> команда: %s", text, cmd.Type)
-
-	d.state.mu.Lock()
-	d.state.LastCmd = string(cmd.Type)
-	d.state.LastCmdAt = time.Now()
-	d.state.mu.Unlock()
-
-	switch cmd.Type {
+	log.Printf("[dispatcher] Распознано: %q — озвучиваю", text)
+	
+		// Пока просто повторяем за пользователем.
+		// Команды (свет, погода, время) — вернём позже, когда решишь,
+		// как именно они должны работать.
+		if err := d.tts.Speak(ctx, text, "xenia"); err != nil {
+			log.Printf("[dispatcher] TTS ошибка: %v", err)
 	}
 }
 
-// --- Обработчики команд (заглушки) ---
 
-func (d *Dispatcher) lightOn() {
-	d.state.mu.Lock()
-	d.state.LightOn = true
-	d.state.mu.Unlock()
-	fmt.Println(">>> Свет включён (заглушка).")
-}
-
-func (d *Dispatcher) lightOff() {
-	d.state.mu.Lock()
-	d.state.LightOn = false
-	d.state.mu.Unlock()
-	fmt.Println(">>> Свет выключен (заглушка).")
-}
-
-func (d *Dispatcher) weather() {
-	fmt.Println(">>> Запрос погоды (заглушка). Тут будет вызов API.")
-}
-
-func (d *Dispatcher) currentTime() {
-	now := time.Now().Format("15:04:05")
-	fmt.Printf(">>> Сейчас %s\n", now)
-}
 
 func (d *Dispatcher) State() *State {
 	return d.state

@@ -53,5 +53,7 @@ func main() {
 
 	// 6. Корректно останавливаем всё
 	recognizer.Stop()
+	disp.Close()
+	fmt.Println("[main] Завершено.")
 	fmt.Println("[main] Завершено.")
 }
