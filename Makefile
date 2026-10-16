@@ -1,3 +1,4 @@
+# --- Переменные ---
 BINARY_NAME   := assistant
 MAIN_PATH     := ./cmd/assistant_app
 BUILD_DIR     := ./bin
@@ -9,13 +10,30 @@ GIGASTT_PID   := /tmp/gigastt.pid
 APP_LOG       := /tmp/assistant.log
 APP_PID       := /tmp/assistant.pid
 
+# --- Silero TTS ---
+TTS_DIR       := ./tts-server
+TTS_VENV      := $(TTS_DIR)/.venv
+TTS_PYTHON    := $(TTS_VENV)/bin/python
+TTS_PIP       := $(TTS_VENV)/bin/pip
+TTS_SCRIPT    := $(TTS_DIR)/silero_server.py
+TTS_LOG       := /tmp/tts.log
+TTS_PID       := /tmp/tts.pid
+TTS_REQS      := $(TTS_DIR)/requirements.txt
+
+# --- Цели ---
 
 .PHONY: all
 all: install build
 	@echo ">>> Всё готово. Запускай: make start"
 
+# --- Установка ---
+
 .PHONY: install
-install:
+install: install-go install-tts
+	@echo ">>> Установка завершена."
+
+.PHONY: install-go
+install-go:
 	@echo ">>> Проверка Go..."
 	@which $(GO) > /dev/null || (echo "Go не установлен. Установи: https://go.dev/dl/" && exit 1)
 	@echo ">>> Проверка cargo..."
@@ -38,7 +56,24 @@ install:
 	@echo ">>> Загрузка Go-зависимостей..."
 	$(GO) mod tidy
 	$(GO) mod download
-	@echo ">>> Установка завершена."
+
+.PHONY: install-tts
+install-tts:
+	@echo ">>> Проверка Python..."
+	@which python3 > /dev/null || (echo "Python3 не установлен" && exit 1)
+	@echo ">>> Создание venv для Silero TTS (если нет)..."
+	@if [ ! -d "$(TTS_VENV)" ]; then \
+		python3 -m venv $(TTS_VENV); \
+		echo ">>> venv создан: $(TTS_VENV)"; \
+	else \
+		echo ">>> venv уже существует: $(TTS_VENV)"; \
+	fi
+	@echo ">>> Установка Python-зависимостей..."
+	@$(TTS_PIP) install --upgrade pip -q
+	@$(TTS_PIP) install -r $(TTS_REQS) -q
+	@echo ">>> Silero TTS готов."
+
+# --- Сборка ---
 
 .PHONY: build
 build:
@@ -47,8 +82,10 @@ build:
 	$(GO) build -o $(BUILD_DIR)/$(BINARY_NAME) $(MAIN_PATH)
 	@echo ">>> Готово: $(BUILD_DIR)/$(BINARY_NAME)"
 
+# --- Запуск ---
+
 .PHONY: start
-start: build stop-gigastt
+start: build stop-gigastt stop-tts start-tts-bg
 	@echo ">>> Запуск gigastt serve..."
 	@$(GIGASTT_BIN) serve > $(GIGASTT_LOG) 2>&1 & echo $$! > $(GIGASTT_PID)
 	@echo ">>> gigastt PID: $$(cat $(GIGASTT_PID))"
@@ -58,25 +95,56 @@ start: build stop-gigastt
 			echo ">>> gigastt healthcheck OK."; \
 			break; \
 		fi; \
-		echo ">>> ...ждём ($$i/10)"; \
+		echo ">>> ...ждём gigastt ($$i/10)"; \
 		sleep 1; \
 	done
-	@echo ">>> Даю модели время загрузиться (3 сек)..."
+	@echo ">>> Даю модели время загрузиться (10 сек)..."
 	@sleep 10
 	@echo ">>> Запуск приложения..."
 	@$(BUILD_DIR)/$(BINARY_NAME)
-
-.PHONY: check-tts
-check-tts:
-	@test -f pkg/tts/assets/ru_RU-irina-medium.onnx || (echo "Нет модели TTS" && exit 1)
-	@test -f pkg/tts/assets/ru_RU-irina-medium.onnx.json || (echo "Нет конфига TTS" && exit 1)
-	@echo ">>> TTS-ресурсы на месте"
 
 .PHONY: start-gigastt
 start-gigastt: stop-gigastt
 	@echo ">>> Запуск gigastt serve..."
 	@$(GIGASTT_BIN) serve > $(GIGASTT_LOG) 2>&1 & echo $$! > $(GIGASTT_PID)
 	@echo ">>> gigastt PID: $$(cat $(GIGASTT_PID))"
+
+.PHONY: start-tts
+start-tts: stop-tts start-tts-bg
+	@echo ">>> Ожидание готовности TTS..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		if curl -s http://127.0.0.1:9877/health > /dev/null 2>&1; then \
+			echo ">>> TTS healthcheck OK."; \
+			break; \
+		fi; \
+		echo ">>> ...ждём TTS ($$i/15)"; \
+		sleep 1; \
+	done
+
+# Внутренняя цель: запустить TTS в фоне (без ожидания)
+.PHONY: start-tts-bg
+start-tts-bg:
+	@echo ">>> Запуск Silero TTS..."
+	@if [ ! -x "$(TTS_PYTHON)" ]; then \
+		echo ">>> venv не найден. Запусти 'make install-tts' сначала."; \
+		exit 1; \
+	fi
+	@cd $(TTS_DIR) && ../$(TTS_PYTHON) silero_server.py > $(TTS_LOG) 2>&1 & echo $$! > $(TTS_PID)
+	@echo ">>> TTS PID: $$(cat $(TTS_PID))"
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
+		if curl -s http://127.0.0.1:9877/health > /dev/null 2>&1; then \
+			echo ">>> TTS готов."; \
+			break; \
+		fi; \
+		echo ">>> ...ждём TTS ($$i/15)"; \
+		sleep 1; \
+	done
+
+# --- Остановка ---
+
+.PHONY: stop
+stop: stop-gigastt stop-tts stop-app
+	@echo ">>> Всё остановлено."
 
 .PHONY: stop-gigastt
 stop-gigastt:
@@ -91,9 +159,18 @@ stop-gigastt:
 		rm -f $(GIGASTT_PID); \
 	fi
 
-.PHONY: stop
-stop: stop-gigastt stop-app
-	@echo ">>> Всё остановлено."
+.PHONY: stop-tts
+stop-tts:
+	@if [ -f $(TTS_PID) ]; then \
+		PID=$$(cat $(TTS_PID)); \
+		if kill -0 $$PID 2>/dev/null; then \
+			kill $$PID; \
+			echo ">>> TTS (PID $$PID) остановлен."; \
+		else \
+			echo ">>> TTS уже не работает."; \
+		fi; \
+		rm -f $(TTS_PID); \
+	fi
 
 .PHONY: stop-app
 stop-app:
@@ -105,6 +182,8 @@ stop-app:
 		fi; \
 		rm -f $(APP_PID); \
 	fi
+
+# --- Разработка ---
 
 .PHONY: run
 run:
@@ -131,7 +210,14 @@ tidy:
 clean:
 	@echo ">>> Очистка..."
 	@rm -rf $(BUILD_DIR)
-	@rm -f $(GIGASTT_LOG) $(GIGASTT_PID) $(APP_LOG) $(APP_PID)
+	@rm -f $(GIGASTT_LOG) $(GIGASTT_PID) $(TTS_LOG) $(TTS_PID) $(APP_LOG) $(APP_PID)
+
+.PHONY: clean-tts
+clean-tts:
+	@echo ">>> Удаление venv Silero TTS..."
+	@rm -rf $(TTS_VENV)
+
+# --- Справка ---
 
 .PHONY: help
 help:
