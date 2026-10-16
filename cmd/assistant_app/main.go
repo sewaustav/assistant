@@ -35,7 +35,7 @@ func main() {
 	disp := dispatcher.New(textChan, func() {
 		log.Println("[main] Получена команда выхода, останавливаемся.")
 		cancel()
-	})
+	}, recognizer)
 
 	// 4. Запускаем диспетчер в отдельной горутине
 	go disp.Run(ctx)

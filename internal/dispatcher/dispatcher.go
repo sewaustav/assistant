@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/sewaustav/assistant/internal/speech_recognition"
 	"github.com/sewaustav/assistant/pkg/tts"
-
 )
 
 // GigaSTTMessage — структура сообщения от gigastt.
@@ -31,23 +32,25 @@ type State struct {
 
 // Dispatcher связывает STT и логику команд.
 type Dispatcher struct {
-	state    *State
-	textChan <-chan string
-	stopFn   func()
-	tts      *tts.Client
+	state      *State
+	textChan   <-chan string
+	stopFn     func()
+	tts        *tts.Client
+	recognizer *speech_recognition.Recognizer
 }
 
-func New(textChan <-chan string, stopFn func()) *Dispatcher {
+func New(textChan <-chan string, stopFn func(), recognizer *speech_recognition.Recognizer) *Dispatcher {
 	ttsClient, err := tts.New("")
 	if err != nil {
 		log.Fatalf("TTS init: %v", err)
 	}
 
 	return &Dispatcher{
-		state:    &State{},
-		textChan: textChan,
-		stopFn:   stopFn,
-		tts:      ttsClient,
+		state:      &State{},
+		textChan:   textChan,
+		stopFn:     stopFn,
+		tts:        ttsClient,
+		recognizer: recognizer,
 	}
 }
 
@@ -98,16 +101,31 @@ func (d *Dispatcher) handleRaw(ctx context.Context, raw string) {
 	}
 }
 
-// handleText — обработка финального текста как команды.
 func (d *Dispatcher) handleText(ctx context.Context, text string) {
-	log.Printf("[dispatcher] Распознано: %q — озвучиваю", text)
-	
-		// Пока просто повторяем за пользователем.
-		// Команды (свет, погода, время) — вернём позже, когда решишь,
-		// как именно они должны работать.
-		if err := d.tts.Speak(ctx, text, "xenia"); err != nil {
-			log.Printf("[dispatcher] TTS ошибка: %v", err)
+	if strings.TrimSpace(text) == "" {
+		return
 	}
+	log.Printf("[dispatcher] Распознано: %q — озвучиваю", text)
+
+	// 1. Мьютим микрофон ДО начала TTS.
+	d.recognizer.Mute()
+
+	// 2. Синтез + воспроизведение.
+	duration, err := d.tts.Speak(ctx, text, "xenia")
+	if err != nil {
+		log.Printf("[dispatcher] TTS ошибка: %v", err)
+		d.recognizer.Unmute()
+		return
+	}
+
+	// 3. Хвост эха: ждём, пока звук затихнет в комнате.
+	const echoTail = 300 * time.Millisecond
+	time.Sleep(echoTail)
+
+	log.Printf("[dispatcher] TTS отыграл %.2f сек + хвост %v, размьючиваю", duration.Seconds(), echoTail)
+
+	// 4. Размьютим микрофон.
+	d.recognizer.Unmute()
 }
 
 

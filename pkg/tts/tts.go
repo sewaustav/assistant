@@ -61,9 +61,10 @@ func New(baseURL string) (*Client, error) {
 }
 
 // Speak синтезирует текст и воспроизводит его.
-func (c *Client) Speak(ctx context.Context, text, speaker string) error {
+// Возвращает длительность воспроизведённого аудио.
+func (c *Client) Speak(ctx context.Context, text, speaker string) (time.Duration, error) {
 	if text == "" {
-		return fmt.Errorf("пустой текст")
+		return 0, fmt.Errorf("пустой текст")
 	}
 	if speaker == "" {
 		speaker = "xenia"
@@ -72,33 +73,51 @@ func (c *Client) Speak(ctx context.Context, text, speaker string) error {
 	reqBody := Request{Text: text, Speaker: speaker, SampleRate: 48000}
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
+		return 0, fmt.Errorf("marshal: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/tts", bytes.NewReader(jsonBody))
 	if err != nil {
-		return fmt.Errorf("new request: %w", err)
+		return 0, fmt.Errorf("new request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("http do: %w", err)
+		return 0, fmt.Errorf("http do: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("tts server вернул %d: %s", resp.StatusCode, string(body))
+		return 0, fmt.Errorf("tts server вернул %d: %s", resp.StatusCode, string(body))
 	}
 
 	wav, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return 0, fmt.Errorf("read response: %w", err)
 	}
 
-	log.Printf("[tts] Получено %d байт WAV, воспроизвожу...", len(wav))
-	return c.playWAV(ctx, wav)
+	duration := wavDuration(wav)
+	log.Printf("[tts] Получено %d байт WAV (~%.2f сек), воспроизвожу...", len(wav), duration.Seconds())
+
+	if err := c.playWAV(ctx, wav); err != nil {
+		return 0, err
+	}
+	return duration, nil
+}
+
+// wavDuration считает длительность WAV по заголовку.
+// Предполагается PCM16, 48000 Hz, моно.
+func wavDuration(wav []byte) time.Duration {
+	if len(wav) < 44 {
+		return 0
+	}
+	// Data size — байты 40..43 (LE uint32)
+	dataSize := uint32(wav[40]) | uint32(wav[41])<<8 | uint32(wav[42])<<16 | uint32(wav[43])<<24
+	// 48000 Hz * 1 канал * 2 байта = 96000 байт/сек
+	seconds := float64(dataSize) / 96000.0
+	return time.Duration(seconds * float64(time.Second))
 }
 
 // playWAV проигрывает WAV через уже созданный oto-контекст.
@@ -130,3 +149,4 @@ func (c *Client) playWAV(ctx context.Context, wavData []byte) error {
 // Close освобождает аудио-контекст.
 func (c *Client) Close() {
 }
+

@@ -34,14 +34,18 @@ func (r *Recognizer) Start(ctx context.Context) (<-chan string, error) {
 		return nil, err
 	}
 
-	go func() {
-		for raw := range rawChan {
-			log.Printf("[recognizer][RAW] %s", raw)
-		}
-	}()
-
 	log.Println("[recognizer] Слушаю микрофон...")
 	return rawChan, nil
+}
+
+// Mute приостанавливает отправку аудио в GigaAM.
+func (r *Recognizer) Mute() {
+	r.capture.Mute()
+}
+
+// Unmute возобновляет отправку аудио.
+func (r *Recognizer) Unmute() {
+	r.capture.Unmute()
 }
 
 func (r *Recognizer) Stop() {
