@@ -1,0 +1,29 @@
+{
+  "mode": "voice",
+  "verbose": false,
+  "tts": {
+    "enabled": true,
+    "server_url": "http://127.0.0.1:9877",
+    "speaker": "xenia",
+    "sample_rate": 48000,
+    "echo_tail_ms": 300
+  },
+  "asr": {
+    "enabled": true,
+    "server_url": "ws://127.0.0.1:9876/v1/ws"
+  },
+  "llm": {
+    "enabled": false,
+    "provider": "openai",
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini",
+    "timeout": 30,
+    "api_key_env": "ASSISTANT_LLM_API_KEY"
+  },
+  "wake_word": {
+    "enabled": false,
+    "model_path": "",
+    "threshold": 0.5,
+    "cooldown_sec": 2
+  }
+}
