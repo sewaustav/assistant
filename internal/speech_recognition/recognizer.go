@@ -2,12 +2,15 @@ package speech_recognition
 
 import (
 	"context"
+	"fmt"
 	"log"
 )
 
 type Recognizer struct {
 	capture *AudioCapture
 	stt     *GigaSTTClient
+	rawChan chan string
+	started bool
 }
 
 func NewRecognizer() (*Recognizer, error) {
@@ -20,25 +23,52 @@ func NewRecognizer() (*Recognizer, error) {
 		capture.Stop()
 		return nil, err
 	}
-	return &Recognizer{capture: capture, stt: stt}, nil
+	return &Recognizer{
+		capture: capture,
+		stt:     stt,
+		rawChan: make(chan string, 10),
+	}, nil
 }
 
-func (r *Recognizer) Start(ctx context.Context) (<-chan string, error) {
+// Start запускает захват микрофона и STT.
+// Возвращает только ошибку. Канал доступен через RawChan().
+func (r *Recognizer) Start(ctx context.Context) error {
+	if r.started {
+		return fmt.Errorf("Recognizer уже запущен")
+	}
+
 	if err := r.capture.Start(); err != nil {
-		return nil, err
+		return err
 	}
 
 	rawChan, err := r.stt.TranscribeStream(ctx, r.capture.AudioChan())
 	if err != nil {
 		r.capture.Stop()
-		return nil, err
+		return err
 	}
 
+	// Пробрасываем сырой JSON в наш канал.
+	go func() {
+		for raw := range rawChan {
+			select {
+			case r.rawChan <- raw:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	r.started = true
 	log.Println("[recognizer] Слушаю микрофон...")
-	return rawChan, nil
+	return nil
 }
 
-// Mute приостанавливает отправку аудио в GigaAM.
+// RawChan возвращает канал с сырым JSON от gigastt.
+func (r *Recognizer) RawChan() <-chan string {
+	return r.rawChan
+}
+
+// Mute приостанавливает отправку аудио.
 func (r *Recognizer) Mute() {
 	r.capture.Mute()
 }
@@ -48,6 +78,8 @@ func (r *Recognizer) Unmute() {
 	r.capture.Unmute()
 }
 
+// Stop останавливает Recognizer.
 func (r *Recognizer) Stop() {
 	r.capture.Stop()
+	r.started = false
 }

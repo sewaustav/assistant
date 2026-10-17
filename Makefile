@@ -5,26 +5,19 @@ BUILD_DIR     := ./bin
 GO            := go
 CARGO_BIN     := $(HOME)/.cargo/bin
 GIGASTT_BIN   := $(CARGO_BIN)/gigastt
-GIGASTT_LOG   := /tmp/gigastt.log
-GIGASTT_PID   := /tmp/gigastt.pid
-APP_LOG       := /tmp/assistant.log
-APP_PID       := /tmp/assistant.pid
 
 # --- Silero TTS ---
 TTS_DIR       := ./tts-server
 TTS_VENV      := $(TTS_DIR)/.venv
 TTS_PYTHON    := $(TTS_VENV)/bin/python
 TTS_PIP       := $(TTS_VENV)/bin/pip
-TTS_SCRIPT    := $(TTS_DIR)/silero_server.py
-TTS_LOG       := /tmp/tts.log
-TTS_PID       := /tmp/tts.pid
 TTS_REQS      := $(TTS_DIR)/requirements.txt
 
 # --- Цели ---
 
 .PHONY: all
 all: install build
-	@echo ">>> Всё готово. Запускай: make start"
+	@echo ">>> Всё готово. Запускай: make run"
 
 # --- Установка ---
 
@@ -84,111 +77,19 @@ build:
 
 # --- Запуск ---
 
+# Запуск собранного бинарника. Сервера (gigastt, silero) управляются из Go.
 .PHONY: start
-start: build stop-gigastt stop-tts start-tts-bg
-	@echo ">>> Запуск gigastt serve..."
-	@$(GIGASTT_BIN) serve > $(GIGASTT_LOG) 2>&1 & echo $$! > $(GIGASTT_PID)
-	@echo ">>> gigastt PID: $$(cat $(GIGASTT_PID))"
-	@echo ">>> Ожидание готовности gigastt..."
-	@for i in 1 2 3 4 5 6 7 8 9 10; do \
-		if curl -s http://127.0.0.1:9876/health > /dev/null 2>&1; then \
-			echo ">>> gigastt healthcheck OK."; \
-			break; \
-		fi; \
-		echo ">>> ...ждём gigastt ($$i/10)"; \
-		sleep 1; \
-	done
-	@echo ">>> Даю модели время загрузиться (10 сек)..."
-	@sleep 10
-	@echo ">>> Запуск приложения..."
+start: build
+	@echo ">>> Запуск $(BINARY_NAME)..."
 	@$(BUILD_DIR)/$(BINARY_NAME)
 
-.PHONY: start-gigastt
-start-gigastt: stop-gigastt
-	@echo ">>> Запуск gigastt serve..."
-	@$(GIGASTT_BIN) serve > $(GIGASTT_LOG) 2>&1 & echo $$! > $(GIGASTT_PID)
-	@echo ">>> gigastt PID: $$(cat $(GIGASTT_PID))"
-
-.PHONY: start-tts
-start-tts: stop-tts start-tts-bg
-	@echo ">>> Ожидание готовности TTS..."
-	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
-		if curl -s http://127.0.0.1:9877/health > /dev/null 2>&1; then \
-			echo ">>> TTS healthcheck OK."; \
-			break; \
-		fi; \
-		echo ">>> ...ждём TTS ($$i/15)"; \
-		sleep 1; \
-	done
-
-# Внутренняя цель: запустить TTS в фоне (без ожидания)
-.PHONY: start-tts-bg
-start-tts-bg:
-	@echo ">>> Запуск Silero TTS..."
-	@if [ ! -x "$(TTS_PYTHON)" ]; then \
-		echo ">>> venv не найден. Запусти 'make install-tts' сначала."; \
-		exit 1; \
-	fi
-	@cd $(TTS_DIR) && ../$(TTS_PYTHON) silero_server.py > $(TTS_LOG) 2>&1 & echo $$! > $(TTS_PID)
-	@echo ">>> TTS PID: $$(cat $(TTS_PID))"
-	@for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do \
-		if curl -s http://127.0.0.1:9877/health > /dev/null 2>&1; then \
-			echo ">>> TTS готов."; \
-			break; \
-		fi; \
-		echo ">>> ...ждём TTS ($$i/15)"; \
-		sleep 1; \
-	done
-
-# --- Остановка ---
-
-.PHONY: stop
-stop: stop-gigastt stop-tts stop-app
-	@echo ">>> Всё остановлено."
-
-.PHONY: stop-gigastt
-stop-gigastt:
-	@if [ -f $(GIGASTT_PID) ]; then \
-		PID=$$(cat $(GIGASTT_PID)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			kill $$PID; \
-			echo ">>> gigastt (PID $$PID) остановлен."; \
-		else \
-			echo ">>> gigastt уже не работает."; \
-		fi; \
-		rm -f $(GIGASTT_PID); \
-	fi
-
-.PHONY: stop-tts
-stop-tts:
-	@if [ -f $(TTS_PID) ]; then \
-		PID=$$(cat $(TTS_PID)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			kill $$PID; \
-			echo ">>> TTS (PID $$PID) остановлен."; \
-		else \
-			echo ">>> TTS уже не работает."; \
-		fi; \
-		rm -f $(TTS_PID); \
-	fi
-
-.PHONY: stop-app
-stop-app:
-	@if [ -f $(APP_PID) ]; then \
-		PID=$$(cat $(APP_PID)); \
-		if kill -0 $$PID 2>/dev/null; then \
-			kill $$PID; \
-			echo ">>> Приложение (PID $$PID) остановлено."; \
-		fi; \
-		rm -f $(APP_PID); \
-	fi
+# Быстрый запуск через go run (без сборки).
+.PHONY: dev
+dev:
+	@echo ">>> Запуск через go run..."
+	$(GO) run $(MAIN_PATH)
 
 # --- Разработка ---
-
-.PHONY: run
-run:
-	@echo ">>> Запуск приложения через go run..."
-	$(GO) run $(MAIN_PATH)
 
 .PHONY: test
 test:
@@ -206,11 +107,12 @@ lint:
 tidy:
 	$(GO) mod tidy
 
+# --- Очистка ---
+
 .PHONY: clean
 clean:
 	@echo ">>> Очистка..."
 	@rm -rf $(BUILD_DIR)
-	@rm -f $(GIGASTT_LOG) $(GIGASTT_PID) $(TTS_LOG) $(TTS_PID) $(APP_LOG) $(APP_PID)
 
 .PHONY: clean-tts
 clean-tts:
