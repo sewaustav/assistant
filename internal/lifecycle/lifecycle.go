@@ -10,13 +10,17 @@ import (
 	"time"
 )
 
+// Service описывает управляемый дочерний процесс.
+// Cmd — фабрика: каждый вызов Start() создаёт новый *exec.Cmd.
 type Service struct {
-	Name      string
-	Cmd       *exec.Cmd
-	ReadyURL  string
-	HealthURL string
-	mu        sync.Mutex
-	started   bool
+	Name       string
+	CmdFactory func() *exec.Cmd
+	ReadyURL   string
+	HealthURL  string
+
+	mu      sync.Mutex
+	cmd     *exec.Cmd // текущий запущенный процесс (nil если не запущен)
+	started bool
 }
 
 type Manager struct {
@@ -47,15 +51,19 @@ func (m *Manager) Start(ctx context.Context, name string) error {
 
 	log.Printf("[lifecycle] Запуск %s...", name)
 
-	// Платформозависимая настройка (Setpgid на Unix, CREATE_NEW_PROCESS_GROUP на Windows)
-	configureProcessGroup(svc.Cmd)
+	// Каждый раз создаём новый Cmd через фабрику.
+	cmd := svc.CmdFactory()
+	configureProcessGroup(cmd)
 
-	if err := svc.Cmd.Start(); err != nil {
+	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("не удалось запустить %s: %w", name, err)
 	}
 
+	svc.cmd = cmd
+
 	if err := waitReady(ctx, svc); err != nil {
-		killProcessTree(svc.Cmd)
+		killProcessTree(cmd)
+		svc.cmd = nil
 		return fmt.Errorf("%s не стал готов: %w", name, err)
 	}
 
@@ -73,13 +81,14 @@ func (m *Manager) Stop(name string) error {
 	svc.mu.Lock()
 	defer svc.mu.Unlock()
 
-	if !svc.started || svc.Cmd.Process == nil {
+	if !svc.started || svc.cmd == nil {
 		log.Printf("[lifecycle] %s не запущен", name)
 		return nil
 	}
 
 	log.Printf("[lifecycle] Остановка %s...", name)
-	killProcessTree(svc.Cmd)
+	killProcessTree(svc.cmd)
+	svc.cmd = nil
 	svc.started = false
 	log.Printf("[lifecycle] %s остановлен", name)
 	return nil
@@ -125,22 +134,24 @@ func waitReady(ctx context.Context, svc *Service) error {
 // NewGigaSTT создаёт описание сервиса gigastt.
 func NewGigaSTT(binPath string) *Service {
 	return &Service{
-		Name:      "gigastt",
-		Cmd:       exec.Command(binPath, "serve"),
+		Name: "gigastt",
+		CmdFactory: func() *exec.Cmd {
+			return exec.Command(binPath, "serve")
+		},
 		ReadyURL:  "http://127.0.0.1:9876/ready",
 		HealthURL: "http://127.0.0.1:9876/health",
 	}
 }
 
 // NewSilero создаёт описание сервиса Silero TTS.
-// ttsDir — путь к директории tts-server (например, "./tts-server").
-// pythonPath — путь к python из venv (например, "./tts-server/.venv/bin/python").
 func NewSilero(pythonPath, ttsDir string) *Service {
-	cmd := exec.Command(pythonPath, "silero_server.py")
-	cmd.Dir = ttsDir // <-- ключевой момент: рабочий каталог = tts-server
 	return &Service{
-		Name:      "silero",
-		Cmd:       cmd,
+		Name: "silero",
+		CmdFactory: func() *exec.Cmd {
+			cmd := exec.Command(pythonPath, "silero_server.py")
+			cmd.Dir = ttsDir
+			return cmd
+		},
 		HealthURL: "http://127.0.0.1:9877/health",
 	}
 }

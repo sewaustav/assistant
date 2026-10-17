@@ -41,7 +41,7 @@ type Dispatcher struct {
 	cfg   *config.Config
 
 	// Входы
-	voiceChan <-chan string // сырой JSON от gigastt
+	voiceChan chan string // сырой JSON от gigastt
 	textChan  <-chan string // текст от CLI
 	cmdChan   <-chan string // команды управления (/mode, /quit)
 
@@ -60,7 +60,7 @@ type Dispatcher struct {
 // New создаёт диспетчер.
 func New(
 	cfg *config.Config,
-	voiceChan <-chan string,
+	voiceChan chan string,
 	textChan <-chan string,
 	cmdChan <-chan string,
 	responseChan chan<- string,
@@ -169,7 +169,6 @@ func (d *Dispatcher) handleCommand(ctx context.Context, cmd string) {
 	}
 }
 
-// switchMode переключает режим работы.
 func (d *Dispatcher) switchMode(ctx context.Context, newMode config.Mode) {
 	d.state.mu.Lock()
 	oldMode := d.state.Mode
@@ -185,31 +184,23 @@ func (d *Dispatcher) switchMode(ctx context.Context, newMode config.Mode) {
 
 	switch newMode {
 	case config.ModeVoice:
-		// Поднимаем сервера для голоса.
-		if err := d.mgr.Start(ctx, "gigastt"); err != nil {
-			log.Printf("[dispatcher] Ошибка запуска gigastt: %v", err)
-			d.responseChan <- fmt.Sprintf("Ошибка запуска gigastt: %v", err)
+		if err := d.startVoice(ctx); err != nil {
+			log.Printf("[dispatcher] Ошибка запуска voice: %v", err)
+			d.responseChan <- fmt.Sprintf("Ошибка запуска voice: %v", err)
+			// Откатываемся обратно в text.
+			d.state.mu.Lock()
+			d.state.Mode = config.ModeText
+			d.state.mu.Unlock()
+			if d.cli != nil {
+				d.cli.UpdateMode(config.ModeText)
+			}
 			return
 		}
-		if err := d.mgr.Start(ctx, "silero"); err != nil {
-			log.Printf("[dispatcher] Ошибка запуска silero: %v", err)
-			d.responseChan <- fmt.Sprintf("Ошибка запуска silero: %v", err)
-			return
-		}
-		// TODO: запустить Recognizer (микрофон + WebSocket).
 
 	case config.ModeText:
-		// Гасим сервера для голоса.
-		if err := d.mgr.Stop("gigastt"); err != nil {
-			log.Printf("[dispatcher] Ошибка остановки gigastt: %v", err)
-		}
-		if err := d.mgr.Stop("silero"); err != nil {
-			log.Printf("[dispatcher] Ошибка остановки silero: %v", err)
-		}
-		// TODO: остановить Recognizer.
+		d.stopVoice()
 	}
 
-	// Обновляем CLI, чтобы промпт сменился.
 	if d.cli != nil {
 		d.cli.UpdateMode(newMode)
 	}
@@ -227,13 +218,13 @@ func (d *Dispatcher) handleRaw(ctx context.Context, raw string) {
 	switch msg.Type {
 	case "ready":
 		log.Printf("[dispatcher] Модель готова.")
-	case "partial":
-		log.Printf("[dispatcher][partial] %s", msg.Text)
+	// case "partial":
+	// 	log.Printf("[dispatcher][partial] %s", msg.Text)
 	case "final":
 		log.Printf("[dispatcher][final] %s (conf=%.2f)", msg.Text, msg.Confidence)
 		d.handleText(ctx, msg.Text)
-	default:
-		log.Printf("[dispatcher][%s] %s", msg.Type, raw)
+	// default:
+	// 	log.Printf("[dispatcher][%s] %s", msg.Type, raw)
 	}
 }
 
@@ -270,4 +261,49 @@ func (d *Dispatcher) handleText(ctx context.Context, text string) {
 
 func (d *Dispatcher) State() *State {
 	return d.state
+}
+
+// startVoice поднимает сервера и запускает Recognizer.
+func (d *Dispatcher) startVoice(ctx context.Context) error {
+	// 1. Сервера.
+	if err := d.mgr.Start(ctx, "gigastt"); err != nil {
+		return fmt.Errorf("gigastt: %w", err)
+	}
+	if err := d.mgr.Start(ctx, "silero"); err != nil {
+		return fmt.Errorf("silero: %w", err)
+	}
+
+	// 2. Recognizer — создаём заново.
+	rec, err := speech_recognition.NewRecognizer()
+	if err != nil {
+		return fmt.Errorf("recognizer: %w", err)
+	}
+	if err := rec.Start(ctx); err != nil {
+		rec.Stop()
+		return fmt.Errorf("recognizer start: %w", err)
+	}
+	d.recognizer = rec
+
+	// 3. Пробрасываем rawChan в voiceChan.
+	go func() {
+		for raw := range rec.RawChan() {
+			select {
+			case d.voiceChan <- raw:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return nil
+}
+
+// stopVoice гасит Recognizer и сервера.
+func (d *Dispatcher) stopVoice() {
+	if d.recognizer != nil {
+		d.recognizer.Stop()
+		d.recognizer = nil
+	}
+	_ = d.mgr.Stop("gigastt")
+	_ = d.mgr.Stop("silero")
 }
