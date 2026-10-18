@@ -1,27 +1,29 @@
 package cli
 
-import (
-	"fmt"
-)
+import "fmt"
+
+// clearLine стирает текущую строку и возвращает курсор в начало.
+// \033[2K — очистить всю строку, \r — вернуться в начало.
+const clearLine = "\033[2K\r"
 
 // PrintResponse выводит ответ агента.
 func PrintResponse(text string) {
-	// \r — чтобы перезаписать строку с приглашением, если оно было.
-	fmt.Printf("\r[assistant] %s\n", text)
+	fmt.Printf("%s[assistant] %s\n", clearLine, text)
 }
 
-// PrintError выводит ошибку.
-func PrintError(err error) {
-	fmt.Printf("\r[error] %v\n", err)
+// PrintUser выводит то, что сказал/написал пользователь.
+// В голосовом режиме — это распознанный текст, в текстовом — введённый.
+func PrintUser(text string) {
+	fmt.Printf("%s[you] %s\n", clearLine, text)
 }
 
-// PrintInfo выводит служебное сообщение.
+// PrintInfo выводит служебное сообщение для пользователя.
 func PrintInfo(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
-	fmt.Printf("\r[info] %s\n", msg)
+	fmt.Printf("%s[info] %s\n", clearLine, msg)
 }
 
-// PrintEcho выводит то, что пользователь сказал/написал (для голосового режима).
-func PrintEcho(text string) {
-	fmt.Printf("\r[you] %s\n", text)
+// PrintError выводит ошибку для пользователя.
+func PrintError(err error) {
+	fmt.Printf("%s[error] %v\n", clearLine, err)
 }

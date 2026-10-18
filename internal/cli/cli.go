@@ -11,9 +11,9 @@ import (
 
 // CLI — простой интерфейс командной строки.
 type CLI struct {
-	cfg      *config.Config
-	inputChan chan<- string // канал для отправки текста в диспетчер
-	cmdChan   chan<- string // канал для отправки команд управления
+	cfg       *config.Config
+	inputChan chan<- string
+	cmdChan   chan<- string
 }
 
 // New создаёт CLI.
@@ -34,8 +34,7 @@ func (c *CLI) Run() {
 		c.printPrompt()
 
 		if !scanner.Scan() {
-			// EOF (Ctrl+D) — выходим.
-			fmt.Println("\n[cli] Ввод завершён.")
+			PrintInfo("Ввод завершён.")
 			c.cmdChan <- "/quit"
 			return
 		}
@@ -45,31 +44,26 @@ func (c *CLI) Run() {
 			continue
 		}
 
-		// Обработка команд управления (начинаются с / или @).
+		// Команды управления (/mode, /quit, @...).
 		if strings.HasPrefix(line, "/") || strings.HasPrefix(line, "@") {
 			c.cmdChan <- line
 			continue
 		}
 
 		// Обычный текст.
-		// В голосовом режиме — игнорируем (только команды).
-		// В текстовом — отправляем в диспетчер.
 		if c.cfg.Mode == config.ModeText {
 			c.inputChan <- line
 		} else {
-			// Голосовой режим: текст игнорируется, но можно показать подсказку.
-			fmt.Println("[cli] (голосовой режим: текст игнорируется, используйте /mode text)")
+			PrintInfo("Голосовой режим: текст игнорируется, используйте /mode text")
 		}
 	}
 }
 
 // printBanner выводит приветствие и текущий режим.
 func (c *CLI) printBanner() {
-	fmt.Println("=== Assistant CLI ===")
+	fmt.Println("=== Assistant ===")
 	fmt.Printf("Режим: %s\n", c.cfg.Mode)
 	fmt.Println("Команды: /mode voice | /mode text | /quit")
-	fmt.Println("В голосовом режиме текст игнорируется, работают только команды.")
-	fmt.Println("=====================")
 }
 
 // printPrompt выводит приглашение с учётом режима.
@@ -84,5 +78,5 @@ func (c *CLI) printPrompt() {
 // UpdateMode обновляет отображаемый режим (вызывается диспетчером при смене).
 func (c *CLI) UpdateMode(mode config.Mode) {
 	c.cfg.Mode = mode
-	fmt.Printf("\n[cli] Режим переключён на: %s\n", mode)
+	PrintInfo("Режим переключён на: %s", mode)
 }
