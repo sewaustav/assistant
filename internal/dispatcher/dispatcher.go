@@ -207,37 +207,35 @@ func (d *Dispatcher) switchMode(ctx context.Context, newMode config.Mode) {
 	d.responseChan <- fmt.Sprintf("Режим переключён на: %s", newMode)
 }
 
-// handleRaw парсит сырой JSON от gigastt.
 func (d *Dispatcher) handleRaw(ctx context.Context, raw string) {
 	var msg GigaSTTMessage
 	if err := json.Unmarshal([]byte(raw), &msg); err != nil {
-		log.Printf("[dispatcher] Ошибка парсинга JSON: %v | raw=%s", err, raw)
+		log.Printf("[dispatcher] Ошибка парсинга JSON: %v", err)
 		return
 	}
 
 	switch msg.Type {
 	case "ready":
-		log.Printf("[dispatcher] Модель готова.")
-	// case "partial":
-	// 	log.Printf("[dispatcher][partial] %s", msg.Text)
+		log.Printf("[dispatcher] Модель готова.") // только в файл, не в CLI
 	case "final":
 		log.Printf("[dispatcher][final] %s (conf=%.2f)", msg.Text, msg.Confidence)
 		d.handleText(ctx, msg.Text)
-	// default:
-	// 	log.Printf("[dispatcher][%s] %s", msg.Type, raw)
 	}
 }
 
-// handleText обрабатывает финальный текст (из голоса или CLI).
 func (d *Dispatcher) handleText(ctx context.Context, text string) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
 	log.Printf("[dispatcher] Обрабатываю: %q", text)
 
+	// Показываем пользователю, что он сказал (для голоса — распознанный текст).
+	if d.state.Mode == config.ModeVoice {
+		cli.PrintUser(text)
+	}
+
 	response := text
 
-	// В голосовом режиме — мьютим и озвучиваем (если recognizer есть).
 	if d.state.Mode == config.ModeVoice && d.recognizer != nil {
 		d.recognizer.Mute()
 

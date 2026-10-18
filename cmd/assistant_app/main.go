@@ -13,11 +13,19 @@ import (
 	"github.com/sewaustav/assistant/internal/config"
 	"github.com/sewaustav/assistant/internal/dispatcher"
 	"github.com/sewaustav/assistant/internal/lifecycle"
+	"github.com/sewaustav/assistant/internal/logging"
 	"github.com/sewaustav/assistant/internal/speech_recognition"
 )
 
 func main() {
-	fmt.Println("=== Assistant ===")
+	// 0. Логи — в файл, ДО всего остального.
+	logPath, err := logging.Init()
+	if err != nil {
+		// Если лог не открылся — падаем в stderr, но не молчим.
+		fmt.Fprintf(os.Stderr, "Не удалось инициализировать логи: %v\n", err)
+	} else {
+		log.Printf("[main] Логи: %s", logPath)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -34,16 +42,16 @@ func main() {
 		cfg.Mode, cfg.TTS.Speaker, cfg.ASR.Enabled)
 
 	// 2. Каналы.
-	voiceChan := make(chan string, 10)     // от GigaAM (сырой JSON)
-	textInputChan := make(chan string, 10) // от CLI (текст)
-	cmdChan := make(chan string, 10)       // команды управления (/mode, /quit)
-	responseChan := make(chan string, 10)  // ответы агента
+	voiceChan := make(chan string, 10)
+	textInputChan := make(chan string, 10)
+	cmdChan := make(chan string, 10)
+	responseChan := make(chan string, 10)
 
-	// 3. CLI — запускаем сразу, он всегда доступен.
+	// 3. CLI.
 	cliClient := cli.New(cfg, textInputChan, cmdChan)
 	go cliClient.Run()
 
-	// 4. Lifecycle-менеджер.
+	// 4. Lifecycle.
 	mgr := lifecycle.NewManager()
 
 	gigasttPath := filepath.Join(os.Getenv("HOME"), ".cargo/bin/gigastt")
@@ -54,11 +62,11 @@ func main() {
 	pythonPath := filepath.Join(ttsDir, ".venv/bin/python")
 	mgr.Register("silero", lifecycle.NewSilero(pythonPath, ttsDir))
 
-	// 5. Recognizer — создаём ТОЛЬКО если режим voice, и ТОЛЬКО после запуска gigastt.
+	// 5. Recognizer (только voice).
 	var recognizer *speech_recognition.Recognizer
 
 	if cfg.Mode == config.ModeVoice {
-		log.Println("[main] Стартовый режим: voice — поднимаю сервера...")
+		cli.PrintInfo("Запускаю сервера...")
 
 		if err := mgr.Start(ctx, "gigastt"); err != nil {
 			log.Fatalf("[main] gigastt: %v", err)
@@ -67,17 +75,14 @@ func main() {
 			log.Fatalf("[main] silero: %v", err)
 		}
 
-		// Теперь gigastt готов — можно создавать Recognizer.
 		recognizer, err = speech_recognition.NewRecognizer()
 		if err != nil {
 			log.Fatalf("[main] Recognizer: %v", err)
 		}
-
 		if err := recognizer.Start(ctx); err != nil {
 			log.Fatalf("[main] Recognizer start: %v", err)
 		}
 
-		// Пробрасываем сырой JSON из Recognizer в voiceChan.
 		go func() {
 			for raw := range recognizer.RawChan() {
 				select {
@@ -87,8 +92,10 @@ func main() {
 				}
 			}
 		}()
+
+		cli.PrintInfo("Всё загружено. Слушаю...")
 	} else {
-		log.Println("[main] Стартовый режим: text — сервера не нужны.")
+		cli.PrintInfo("Текстовый режим. Введите сообщение.")
 	}
 
 	// 6. Диспетчер.
@@ -98,36 +105,36 @@ func main() {
 		textInputChan,
 		cmdChan,
 		responseChan,
-		recognizer, // может быть nil в текстовом режиме
+		recognizer,
 		mgr,
 		cliClient,
 		cancel,
 	)
 	go disp.Run(ctx)
 
-	// 7. Читаем ответы и печатаем в CLI.
+	// 7. Ответы — в CLI.
 	go func() {
 		for resp := range responseChan {
 			cli.PrintResponse(resp)
 		}
 	}()
 
-	// 8. Ждём сигнала завершения.
+	// 8. Ждём сигнала.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case <-sigChan:
-		fmt.Println("\n[main] Получен сигнал завершения.")
+		cli.PrintInfo("Получен сигнал завершения.")
 	case <-ctx.Done():
-		fmt.Println("\n[main] Контекст отменён.")
+		cli.PrintInfo("Контекст отменён.")
 	}
 
-	// 9. Корректно останавливаем всё.
+	// 9. Останавливаемся.
 	if recognizer != nil {
 		recognizer.Stop()
 	}
 	disp.Close()
 	mgr.StopAll()
-	fmt.Println("[main] Завершено.")
+	cli.PrintInfo("Завершено.")
 }
