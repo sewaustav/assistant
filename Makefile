@@ -78,8 +78,8 @@ build:
 # --- Запуск ---
 
 # Запуск собранного бинарника. Сервера (gigastt, silero) управляются из Go.
-.PHONY: start
-start: build
+.PHONY: run
+run: build
 	@echo ">>> Запуск $(BINARY_NAME)..."
 	@$(BUILD_DIR)/$(BINARY_NAME)
 
