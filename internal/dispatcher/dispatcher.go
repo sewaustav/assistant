@@ -12,6 +12,7 @@ import (
 	"github.com/sewaustav/assistant/internal/cli"
 	"github.com/sewaustav/assistant/internal/config"
 	"github.com/sewaustav/assistant/internal/lifecycle"
+	"github.com/sewaustav/assistant/internal/llm"
 	"github.com/sewaustav/assistant/internal/speech_recognition"
 	"github.com/sewaustav/assistant/pkg/tts"
 )
@@ -55,6 +56,9 @@ type Dispatcher struct {
 	cli        *cli.CLI
 
 	stopFn func()
+
+	// handlers 
+	llm *llm.Handler
 }
 
 // New создаёт диспетчер.
@@ -87,6 +91,7 @@ func New(
 		recognizer:   recognizer,
 		mgr:          mgr,
 		cli:          cliClient,
+		llm:          llm.New(cfg),
 		stopFn:       stopFn,
 	}
 }
@@ -229,13 +234,26 @@ func (d *Dispatcher) handleText(ctx context.Context, text string) {
 	}
 	log.Printf("[dispatcher] Обрабатываю: %q", text)
 
-	// Показываем пользователю, что он сказал (для голоса — распознанный текст).
 	if d.state.Mode == config.ModeVoice {
 		cli.PrintUser(text)
 	}
 
-	response := text
+	var response string
+	var err error
 
+	if d.cfg.LLM.Enabled {
+		response, err = d.llm.Handle(ctx, text)
+	} else {
+		response = text
+	}
+
+	if err != nil {
+		log.Printf("[dispatcher] Ошибка обработки: %v", err)
+		d.responseChan <- fmt.Sprintf("Ошибка: %v", err)
+		return
+	}
+
+	// TTS в голосовом режиме.
 	if d.state.Mode == config.ModeVoice && d.recognizer != nil {
 		d.recognizer.Mute()
 
