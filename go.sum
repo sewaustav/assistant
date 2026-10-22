@@ -1,3 +1,8 @@
+github.com/aaaton/golem/v4 v4.0.0/go.mod h1:OfK/S5v9Exsx1yO21WorREuIVV+Y5K2hygP0A9oJCCI=
+github.com/aaaton/golem/v4 v4.0.2 h1:m4FvpSL8Zcv7XjmrKiBP7dp5FzhPCji9FcQRcH6T23k=
+github.com/aaaton/golem/v4 v4.0.2/go.mod h1:OfK/S5v9Exsx1yO21WorREuIVV+Y5K2hygP0A9oJCCI=
+github.com/aaaton/golem/v4/dicts/ru v0.0.0-20250408131944-3488790fc110 h1:aRLhKltXUyZg/7DoZE5PcNhETfTjMBXBEzD/JVRVVN4=
+github.com/aaaton/golem/v4/dicts/ru v0.0.0-20250408131944-3488790fc110/go.mod h1:n14MqOgbLBidXRIvLw9H3/vFyE4+PcjVxYOu05f55R4=
 github.com/ebitengine/oto/v3 v3.5.1 h1:7gL5DxxSQp8S1Me2jDSp+gSAyondYxpjM5RPBBqLT0c=
 github.com/ebitengine/oto/v3 v3.5.1/go.mod h1:Elkm7yzTRns3w2efvibzVOoQ65YOwmec9a76dCiK10o=
 github.com/ebitengine/purego v0.11.0 h1:jhp/D+Nyv7UUW8HAcmcjt2N2rYrYi9m3SL21k0Ua/NI=
