@@ -1,0 +1,42 @@
+{
+  "time": {
+    "description": "Get the current time",
+    "keywords": ["время", "который час", "сколько времени"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {
+      "type": "builtin",
+      "name": "time"
+    }
+  },
+  "browser": {
+    "description": "Open the default web browser",
+    "keywords": ["открой браузер", "запусти браузер", "браузер"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {
+      "type": "builtin",
+      "name": "browser"
+    }
+  },
+  "hotkey": {
+    "description": "Press a keyboard shortcut",
+    "keywords": ["нажми", "хоткей"],
+    "llm_enabled": false,
+    "local_enabled": true,
+    "platforms": ["linux", "windows"],
+    "parameters": {
+      "keys": {
+        "type": "string",
+        "description": "Keys to press, e.g. 'ctrl+c'",
+        "required": true
+      }
+    },
+    "action": {
+      "type": "builtin",
+      "name": "hotkey"
+    }
+  }
+}
