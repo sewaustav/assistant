@@ -15,9 +15,7 @@ type TimeTool struct{}
 func (t *TimeTool) Name() string        { return "time" }
 func (t *TimeTool) Description() string { return "Get the current time" }
 func (t *TimeTool) Execute(ctx context.Context, args map[string]string) (string, error) {
-	now := time.Now()
-	return fmt.Sprintf("%d часов %d минут", now.Hour(), now.Minute()), nil
-
+	return time.Now().Format("15:04:05"), nil
 }
 
 type BrowserTool struct{}
