@@ -74,6 +74,7 @@ func New(
 	mgr *lifecycle.Manager,
 	cliClient *cli.CLI,
 	local *local.Handler,
+	llm *llm.Handler,
 	stopFn func(),
 ) *Dispatcher {
 	ttsClient, err := tts.New(cfg.TTS.ServerURL)
@@ -94,7 +95,7 @@ func New(
 		recognizer:   recognizer,
 		mgr:          mgr,
 		cli:          cliClient,
-		llm:          llm.New(cfg),
+		llm:          llm,
 		local:        local,
 		stopFn:       stopFn,
 	}

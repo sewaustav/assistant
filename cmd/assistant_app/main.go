@@ -13,6 +13,7 @@ import (
 	"github.com/sewaustav/assistant/internal/config"
 	"github.com/sewaustav/assistant/internal/dispatcher"
 	"github.com/sewaustav/assistant/internal/lifecycle"
+	"github.com/sewaustav/assistant/internal/llm"
 	"github.com/sewaustav/assistant/internal/local"
 	"github.com/sewaustav/assistant/internal/logging"
 	"github.com/sewaustav/assistant/internal/speech_recognition"
@@ -114,6 +115,15 @@ func main() {
 		cli.PrintInfo("Текстовый режим. Введите сообщение.")
 	}
 
+	var llmTools []llm.Tool
+	for _, t := range builtinTools {
+		if lt, ok := t.(llm.Tool); ok {
+			llmTools = append(llmTools, lt)
+		}
+	}
+	
+	llmHandler := llm.New(cfg, llmTools)
+
 	disp := dispatcher.New(
 		cfg,
 		voiceChan,
@@ -124,6 +134,7 @@ func main() {
 		mgr,
 		cliClient,
 		localHandler,
+		llmHandler,
 		cancel,
 	)
 	go disp.Run(ctx)
