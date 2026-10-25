@@ -13,8 +13,11 @@ import (
 	"github.com/sewaustav/assistant/internal/config"
 	"github.com/sewaustav/assistant/internal/dispatcher"
 	"github.com/sewaustav/assistant/internal/lifecycle"
+	"github.com/sewaustav/assistant/internal/llm"
+	"github.com/sewaustav/assistant/internal/local"
 	"github.com/sewaustav/assistant/internal/logging"
 	"github.com/sewaustav/assistant/internal/speech_recognition"
+	"github.com/sewaustav/assistant/internal/tools"
 )
 
 func main() {
@@ -30,7 +33,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 1. Конфиг.
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Config: %v", err)
@@ -41,17 +43,33 @@ func main() {
 	log.Printf("[main] Режим: %s, TTS speaker: %s, ASR enabled: %v",
 		cfg.Mode, cfg.TTS.Speaker, cfg.ASR.Enabled)
 
-	// 2. Каналы.
+	cmds, err := config.LoadCommands()
+	if err != nil {
+		log.Fatalf("Commands: %v", err)
+	}
+	
+	builtinTools := tools.BuildFromConfig(cmds)
+	
+	var localTools []local.Tool
+	for _, t := range builtinTools {
+		if lt, ok := t.(local.Tool); ok {
+			localTools = append(localTools, lt)
+		}
+	}
+	
+	localHandler, err := local.New(localTools)
+	if err != nil {
+		log.Fatalf("Local handler: %v", err)
+	}
+
 	voiceChan := make(chan string, 10)
 	textInputChan := make(chan string, 10)
 	cmdChan := make(chan string, 10)
 	responseChan := make(chan string, 10)
 
-	// 3. CLI.
 	cliClient := cli.New(cfg, textInputChan, cmdChan)
 	go cliClient.Run()
 
-	// 4. Lifecycle.
 	mgr := lifecycle.NewManager()
 
 	gigasttPath := filepath.Join(os.Getenv("HOME"), ".cargo/bin/gigastt")
@@ -62,7 +80,6 @@ func main() {
 	pythonPath := filepath.Join(ttsDir, ".venv/bin/python")
 	mgr.Register("silero", lifecycle.NewSilero(pythonPath, ttsDir))
 
-	// 5. Recognizer (только voice).
 	var recognizer *speech_recognition.Recognizer
 
 	if cfg.Mode == config.ModeVoice {
@@ -98,7 +115,15 @@ func main() {
 		cli.PrintInfo("Текстовый режим. Введите сообщение.")
 	}
 
-	// 6. Диспетчер.
+	var llmTools []llm.Tool
+	for _, t := range builtinTools {
+		if lt, ok := t.(llm.Tool); ok {
+			llmTools = append(llmTools, lt)
+		}
+	}
+	
+	llmHandler := llm.New(cfg, llmTools)
+
 	disp := dispatcher.New(
 		cfg,
 		voiceChan,
@@ -108,18 +133,18 @@ func main() {
 		recognizer,
 		mgr,
 		cliClient,
+		localHandler,
+		llmHandler,
 		cancel,
 	)
 	go disp.Run(ctx)
 
-	// 7. Ответы — в CLI.
 	go func() {
 		for resp := range responseChan {
 			cli.PrintResponse(resp)
 		}
 	}()
 
-	// 8. Ждём сигнала.
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -130,7 +155,6 @@ func main() {
 		cli.PrintInfo("Контекст отменён.")
 	}
 
-	// 9. Останавливаемся.
 	if recognizer != nil {
 		recognizer.Stop()
 	}

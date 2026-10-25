@@ -11,15 +11,16 @@ import (
 //go:embed default.json
 var defaultConfig []byte
 
-// Mode — режим работы ассистента.
+//go:embed commands.json
+var defaultCommands []byte
+
 type Mode string
 
 const (
-	ModeVoice Mode = "voice" // ввод с микрофона
-	ModeText  Mode = "text"  // ввод из CLI
+	ModeVoice Mode = "voice"
+	ModeText  Mode = "text"
 )
 
-// Config — корневая структура конфига.
 type Config struct {
 	Mode    Mode   `json:"mode"`
 	Verbose bool   `json:"verbose"`
@@ -30,7 +31,6 @@ type Config struct {
 	WakeWord WakeWordConfig `json:"wake_word"`
 }
 
-// TTSConfig — настройки синтеза речи.
 type TTSConfig struct {
 	Enabled    bool   `json:"enabled"`
 	ServerURL  string `json:"server_url"`
@@ -39,13 +39,11 @@ type TTSConfig struct {
 	EchoTailMs int    `json:"echo_tail_ms"`
 }
 
-// ASRConfig — настройки распознавания речи.
 type ASRConfig struct {
 	Enabled   bool   `json:"enabled"`
 	ServerURL string `json:"server_url"`
 }
 
-// LLMConfig — настройки языковой модели (на будущее).
 type LLMConfig struct {
 	Enabled   bool   `json:"enabled"`
 	Provider  string `json:"provider"`
@@ -55,7 +53,6 @@ type LLMConfig struct {
 	APIKeyEnv string `json:"api_key_env"`
 }
 
-// WakeWordConfig — настройки wake word (на будущее).
 type WakeWordConfig struct {
 	Enabled   bool    `json:"enabled"`
 	ModelPath string  `json:"model_path"`
@@ -63,10 +60,6 @@ type WakeWordConfig struct {
 	Cooldown  int     `json:"cooldown_sec"`
 }
 
-// Dir возвращает кроссплатформенную папку для конфига.
-// Windows: %AppData%\assistant
-// Linux:   ~/.config/assistant
-// macOS:   ~/Library/Application Support/assistant
 func Dir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
@@ -79,7 +72,6 @@ func Dir() (string, error) {
 	return dir, nil
 }
 
-// Path возвращает полный путь к файлу конфига.
 func Path() (string, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -88,8 +80,14 @@ func Path() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
-// Load читает конфиг из файла.
-// Если файла нет — создаёт его из встроенного default.json и возвращает дефолт.
+func CommandsPath() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "commands.json"), nil
+}
+
 func Load() (*Config, error) {
 	path, err := Path()
 	if err != nil {
@@ -98,9 +96,8 @@ func Load() (*Config, error) {
 
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		// Файла нет — создаём из встроенного дефолта.
-		cfg, err := parseDefault()
-		if err != nil {
+		cfg := &Config{}
+		if err := json.Unmarshal(defaultConfig, cfg); err != nil {
 			return nil, fmt.Errorf("не удалось распарсить встроенный дефолт: %w", err)
 		}
 		if err := cfg.Save(); err != nil {
@@ -117,10 +114,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("не удалось распарсить конфиг: %w", err)
 	}
 
-	// Валидация режима: если что-то не то — ставим voice.
 	switch cfg.Mode {
 	case ModeVoice, ModeText:
-		// ок
 	default:
 		cfg.Mode = ModeVoice
 	}
@@ -128,27 +123,58 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
-// parseDefault парсит встроенный default.json.
-func parseDefault() (*Config, error) {
-	var cfg Config
-	if err := json.Unmarshal(defaultConfig, &cfg); err != nil {
+func LoadCommands() (CommandsConfig, error) {
+	path, err := CommandsPath()
+	if err != nil {
 		return nil, err
 	}
-	return &cfg, nil
+
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		var cmds CommandsConfig
+		if err := json.Unmarshal(defaultCommands, &cmds); err != nil {
+			return nil, fmt.Errorf("не удалось распарсить встроенные команды: %w", err)
+		}
+		if err := SaveCommands(cmds); err != nil {
+			return nil, fmt.Errorf("не удалось создать файл команд: %w", err)
+		}
+		return cmds, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("не удалось прочитать команды: %w", err)
+	}
+
+	var cmds CommandsConfig
+	if err := json.Unmarshal(data, &cmds); err != nil {
+		return nil, fmt.Errorf("не удалось распарсить команды: %w", err)
+	}
+	return cmds, nil
 }
 
-// Save записывает конфиг в файл.
+func SaveCommands(cmds CommandsConfig) error {
+	path, err := CommandsPath()
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(cmds, "", "  ")
+	if err != nil {
+		return fmt.Errorf("не удалось сериализовать команды: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("не удалось записать команды: %w", err)
+	}
+	return nil
+}
+
 func (c *Config) Save() error {
 	path, err := Path()
 	if err != nil {
 		return err
 	}
-
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("не удалось сериализовать конфиг: %w", err)
 	}
-
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("не удалось записать конфиг: %w", err)
 	}

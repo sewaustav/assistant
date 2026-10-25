@@ -13,6 +13,7 @@ import (
 	"github.com/sewaustav/assistant/internal/config"
 	"github.com/sewaustav/assistant/internal/lifecycle"
 	"github.com/sewaustav/assistant/internal/llm"
+	"github.com/sewaustav/assistant/internal/local"
 	"github.com/sewaustav/assistant/internal/speech_recognition"
 	"github.com/sewaustav/assistant/pkg/tts"
 )
@@ -42,7 +43,7 @@ type Dispatcher struct {
 	cfg   *config.Config
 
 	// Входы
-	voiceChan chan string // сырой JSON от gigastt
+	voiceChan chan string   // сырой JSON от gigastt
 	textChan  <-chan string // текст от CLI
 	cmdChan   <-chan string // команды управления (/mode, /quit)
 
@@ -57,8 +58,9 @@ type Dispatcher struct {
 
 	stopFn func()
 
-	// handlers 
-	llm *llm.Handler
+	// handlers
+	llm   *llm.Handler
+	local *local.Handler
 }
 
 // New создаёт диспетчер.
@@ -71,6 +73,8 @@ func New(
 	recognizer *speech_recognition.Recognizer,
 	mgr *lifecycle.Manager,
 	cliClient *cli.CLI,
+	local *local.Handler,
+	llm *llm.Handler,
 	stopFn func(),
 ) *Dispatcher {
 	ttsClient, err := tts.New(cfg.TTS.ServerURL)
@@ -91,7 +95,8 @@ func New(
 		recognizer:   recognizer,
 		mgr:          mgr,
 		cli:          cliClient,
-		llm:          llm.New(cfg),
+		llm:          llm,
+		local:        local,
 		stopFn:       stopFn,
 	}
 }
@@ -244,7 +249,7 @@ func (d *Dispatcher) handleText(ctx context.Context, text string) {
 	if d.cfg.LLM.Enabled {
 		response, err = d.llm.Handle(ctx, text)
 	} else {
-		response = text
+		response, err = d.local.Handle(ctx, text)
 	}
 
 	if err != nil {

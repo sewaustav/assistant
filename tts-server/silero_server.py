@@ -1,5 +1,6 @@
 import io
 import logging
+import re
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -7,17 +8,26 @@ import soundfile as sf
 import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from num2words import num2words
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("silero-tts")
 
 LANGUAGE = "ru"
-MODEL_ID = "v5_ru"          # v4_ru содержит голоса: aidar, baya, kseniya, xenia, eugene
+MODEL_ID = "v5_ru"
 DEFAULT_SPEAKER = "kseniya"
 SAMPLE_RATE = 48000
 
 tts_model = None
+
+
+def normalize_text(text: str) -> str:
+    def replace_num(match):
+        return num2words(int(match.group()), lang="ru")
+
+    text = re.sub(r"\d+", replace_num, text)
+    return text
 
 
 @asynccontextmanager
@@ -58,6 +68,9 @@ async def synthesize(req: TTSRequest):
     if not text:
         raise HTTPException(status_code=400, detail="Пустой текст")
 
+    text = normalize_text(text)
+    log.info("Синтез: %r (speaker=%s)", text, req.speaker)
+
     try:
         audio = tts_model.apply_tts(
             text=text,
@@ -68,7 +81,6 @@ async def synthesize(req: TTSRequest):
         log.exception("Ошибка синтеза")
         raise HTTPException(status_code=500, detail=str(e))
 
-    # torch.Tensor -> numpy -> WAV в память
     audio_np = audio.numpy() if isinstance(audio, torch.Tensor) else np.asarray(audio)
 
     buf = io.BytesIO()
