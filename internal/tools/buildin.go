@@ -14,16 +14,16 @@ type TimeTool struct{}
 
 func (t *TimeTool) Name() string        { return "time" }
 func (t *TimeTool) Description() string { return "Get the current time" }
-func (t *TimeTool) Keywords() []string  { return nil }
 func (t *TimeTool) Execute(ctx context.Context, args map[string]string) (string, error) {
-	return time.Now().Format("15:04:05"), nil
+	now := time.Now()
+	return fmt.Sprintf("%d часов %d минут", now.Hour(), now.Minute()), nil
+
 }
 
 type BrowserTool struct{}
 
 func (t *BrowserTool) Name() string        { return "browser" }
 func (t *BrowserTool) Description() string { return "Open the default web browser" }
-func (t *BrowserTool) Keywords() []string  { return nil }
 func (t *BrowserTool) Execute(ctx context.Context, args map[string]string) (string, error) {
 	url := args["url"]
 	if url == "" {
@@ -39,7 +39,6 @@ type HotkeyTool struct{}
 
 func (t *HotkeyTool) Name() string        { return "hotkey" }
 func (t *HotkeyTool) Description() string { return "Press a keyboard shortcut" }
-func (t *HotkeyTool) Keywords() []string  { return nil }
 func (t *HotkeyTool) Execute(ctx context.Context, args map[string]string) (string, error) {
 	keys := args["keys"]
 	if keys == "" {
@@ -49,6 +48,26 @@ func (t *HotkeyTool) Execute(ctx context.Context, args map[string]string) (strin
 		return "", fmt.Errorf("не удалось нажать хоткей: %w", err)
 	}
 	return fmt.Sprintf("Нажато: %s", keys), nil
+}
+
+type wrappedTool struct {
+	inner       any
+	name        string
+	description string
+	keywords    []string
+}
+
+func (w *wrappedTool) Name() string        { return w.name }
+func (w *wrappedTool) Description() string { return w.description }
+func (w *wrappedTool) Keywords() []string  { return w.keywords }
+func (w *wrappedTool) Execute(ctx context.Context, args map[string]string) (string, error) {
+	type execer interface {
+		Execute(context.Context, map[string]string) (string, error)
+	}
+	if e, ok := w.inner.(execer); ok {
+		return e.Execute(ctx, args)
+	}
+	return "", fmt.Errorf("tool %q не умеет Execute", w.name)
 }
 
 func isPlatformSupported(platforms []string) bool {
@@ -62,18 +81,27 @@ func isPlatformSupported(platforms []string) bool {
 
 func BuildFromConfig(cmds config.CommandsConfig) []any {
 	var result []any
-	for _, cfg := range cmds {
+	for name, cfg := range cmds {
 		if !isPlatformSupported(cfg.Platforms) {
 			continue
 		}
+		var base any
 		switch cfg.Action.Name {
 		case "time":
-			result = append(result, &TimeTool{})
+			base = &TimeTool{}
 		case "browser":
-			result = append(result, &BrowserTool{})
+			base = &BrowserTool{}
 		case "hotkey":
-			result = append(result, &HotkeyTool{})
+			base = &HotkeyTool{}
+		default:
+			continue
 		}
+		result = append(result, &wrappedTool{
+			inner:       base,
+			name:        name,
+			description: cfg.Description,
+			keywords:    cfg.Keywords,
+		})
 	}
 	return result
 }

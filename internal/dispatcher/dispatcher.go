@@ -249,7 +249,7 @@ func (d *Dispatcher) handleText(ctx context.Context, text string) {
 	if d.cfg.LLM.Enabled {
 		response, err = d.llm.Handle(ctx, text)
 	} else {
-		response = text
+		response, err = d.local.Handle(ctx, text)
 	}
 
 	if err != nil {
