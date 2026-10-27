@@ -5,10 +5,7 @@
     "llm_enabled": true,
     "local_enabled": true,
     "platforms": ["linux", "windows", "darwin"],
-    "action": {
-      "type": "builtin",
-      "name": "time"
-    }
+    "action": {"type": "builtin", "name": "time"}
   },
   "browser": {
     "description": "Open the default web browser",
@@ -16,27 +13,54 @@
     "llm_enabled": true,
     "local_enabled": true,
     "platforms": ["linux", "windows", "darwin"],
-    "action": {
-      "type": "builtin",
-      "name": "browser"
-    }
+    "action": {"type": "builtin", "name": "browser"}
   },
-  "hotkey": {
-    "description": "Press a keyboard shortcut",
-    "keywords": ["нажми", "хоткей"],
-    "llm_enabled": false,
+  "select_all": {
+    "description": "Select all text",
+    "keywords": ["выдели всё", "выделить всё", "выдели все"],
+    "llm_enabled": true,
     "local_enabled": true,
-    "platforms": ["linux", "windows"],
-    "parameters": {
-      "keys": {
-        "type": "string",
-        "description": "Keys to press, e.g. 'ctrl+c'",
-        "required": true
-      }
-    },
-    "action": {
-      "type": "builtin",
-      "name": "hotkey"
-    }
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "select_all"}
+  },
+  "copy": {
+    "description": "Copy selected text",
+    "keywords": ["скопируй", "копировать", "скопировать"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "copy"}
+  },
+  "cut": {
+    "description": "Cut selected text",
+    "keywords": ["вырежи", "вырезать", "вырежь"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "cut"}
+  },
+  "paste": {
+    "description": "Paste from clipboard",
+    "keywords": ["вставь", "вставить", "вставь текст"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "paste"}
+  },
+  "delete": {
+    "description": "Delete selected text",
+    "keywords": ["удали", "удалить", "сотри"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "delete"}
+  },
+  "undo": {
+    "description": "Undo last action",
+    "keywords": ["отмени", "отменить", "верни назад"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "undo"}
   }
 }

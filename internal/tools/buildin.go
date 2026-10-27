@@ -15,7 +15,8 @@ type TimeTool struct{}
 func (t *TimeTool) Name() string        { return "time" }
 func (t *TimeTool) Description() string { return "Get the current time" }
 func (t *TimeTool) Execute(ctx context.Context, args map[string]string) (string, error) {
-	return time.Now().Format("15:04:05"), nil
+	now := time.Now()
+	return fmt.Sprintf("%d часов %d минут", now.Hour(), now.Minute()), nil
 }
 
 type BrowserTool struct{}
@@ -33,19 +34,70 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]string) (stri
 	return "Браузер открыт", nil
 }
 
-type HotkeyTool struct{}
+type SelectAllTool struct{}
 
-func (t *HotkeyTool) Name() string        { return "hotkey" }
-func (t *HotkeyTool) Description() string { return "Press a keyboard shortcut" }
-func (t *HotkeyTool) Execute(ctx context.Context, args map[string]string) (string, error) {
-	keys := args["keys"]
-	if keys == "" {
-		return "", fmt.Errorf("не указаны клавиши")
+func (t *SelectAllTool) Name() string        { return "select_all" }
+func (t *SelectAllTool) Description() string { return "Select all text" }
+func (t *SelectAllTool) Execute(ctx context.Context, args map[string]string) (string, error) {
+	if err := platform.SendHotkey("ctrl+a"); err != nil {
+		return "", fmt.Errorf("не удалось выделить всё: %w", err)
 	}
-	if err := platform.SendHotkey(keys); err != nil {
-		return "", fmt.Errorf("не удалось нажать хоткей: %w", err)
+	return "Выделено всё", nil
+}
+
+type CopyTool struct{}
+
+func (t *CopyTool) Name() string        { return "copy" }
+func (t *CopyTool) Description() string { return "Copy selected text" }
+func (t *CopyTool) Execute(ctx context.Context, args map[string]string) (string, error) {
+	if err := platform.SendHotkey("ctrl+c"); err != nil {
+		return "", fmt.Errorf("не удалось скопировать: %w", err)
 	}
-	return fmt.Sprintf("Нажато: %s", keys), nil
+	return "Скопировано", nil
+}
+
+type CutTool struct{}
+
+func (t *CutTool) Name() string        { return "cut" }
+func (t *CutTool) Description() string { return "Cut selected text" }
+func (t *CutTool) Execute(ctx context.Context, args map[string]string) (string, error) {
+	if err := platform.SendHotkey("ctrl+x"); err != nil {
+		return "", fmt.Errorf("не удалось вырезать: %w", err)
+	}
+	return "Вырезано", nil
+}
+
+type PasteTool struct{}
+
+func (t *PasteTool) Name() string        { return "paste" }
+func (t *PasteTool) Description() string { return "Paste from clipboard" }
+func (t *PasteTool) Execute(ctx context.Context, args map[string]string) (string, error) {
+	if err := platform.SendHotkey("ctrl+v"); err != nil {
+		return "", fmt.Errorf("не удалось вставить: %w", err)
+	}
+	return "Вставлено", nil
+}
+
+type DeleteTool struct{}
+
+func (t *DeleteTool) Name() string        { return "delete" }
+func (t *DeleteTool) Description() string { return "Delete selected text" }
+func (t *DeleteTool) Execute(ctx context.Context, args map[string]string) (string, error) {
+	if err := platform.SendHotkey("Delete"); err != nil {
+		return "", fmt.Errorf("не удалось удалить: %w", err)
+	}
+	return "Удалено", nil
+}
+
+type UndoTool struct{}
+
+func (t *UndoTool) Name() string        { return "undo" }
+func (t *UndoTool) Description() string { return "Undo last action" }
+func (t *UndoTool) Execute(ctx context.Context, args map[string]string) (string, error) {
+	if err := platform.SendHotkey("ctrl+z"); err != nil {
+		return "", fmt.Errorf("не удалось отменить: %w", err)
+	}
+	return "Отменено", nil
 }
 
 type wrappedTool struct {
@@ -89,8 +141,18 @@ func BuildFromConfig(cmds config.CommandsConfig) []any {
 			base = &TimeTool{}
 		case "browser":
 			base = &BrowserTool{}
-		case "hotkey":
-			base = &HotkeyTool{}
+		case "select_all":
+			base = &SelectAllTool{}
+		case "copy":
+			base = &CopyTool{}
+		case "cut":
+			base = &CutTool{}
+		case "paste":
+			base = &PasteTool{}
+		case "delete":
+			base = &DeleteTool{}
+		case "undo":
+			base = &UndoTool{}
 		default:
 			continue
 		}
