@@ -6,15 +6,15 @@ type CommandType string
 
 const (
 	CmdUnknown CommandType = "unknown"
-	CmdWeather  CommandType = "weather"
-	CmdTime     CommandType = "time"
-	CmdExit     CommandType = "exit"
+	CmdWeather CommandType = "weather"
+	CmdTime    CommandType = "time"
+	CmdExit    CommandType = "exit"
 )
 
 type Command struct {
 	Type    CommandType
 	RawText string
-	Args    map[string]string 
+	Args    map[string]string
 }
 
 func ParseCommand(text string) Command {

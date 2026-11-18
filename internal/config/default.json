@@ -10,7 +10,11 @@
   },
   "asr": {
     "enabled": true,
-    "server_url": "ws://127.0.0.1:9876/v1/ws"
+    "server_url": "ws://127.0.0.1:9876/v1/ws",
+    "sample_rate": 48000,
+    "vad": false,
+    "model_dir": "",
+    "extra_args": []
   },
   "llm": {
     "enabled": false,
@@ -25,5 +29,12 @@
     "model_path": "",
     "threshold": 0.5,
     "cooldown_sec": 2
-  }
+  },
+  "paths": {
+    "gigastt": "",
+    "python": "",
+    "tts_dir": ""
+  },
+  "search_url": "https://yandex.ru/search/?text={query}",
+  "apps": {}
 }
