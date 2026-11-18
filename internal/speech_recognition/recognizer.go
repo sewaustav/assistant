@@ -6,27 +6,26 @@ import (
 	"log"
 )
 
+// Recognizer связывает микрофон и gigastt.
 type Recognizer struct {
-	capture *AudioCapture
-	stt     *GigaSTTClient
-	rawChan chan string
-	started bool
+	capture    *AudioCapture
+	stt        *GigaSTTClient
+	rawChan    chan string
+	started    bool
+	sampleRate int
 }
 
-func NewRecognizer() (*Recognizer, error) {
-	capture, err := NewAudioCapture()
+// NewRecognizer создаёт распознаватель.
+func NewRecognizer(serverURL string, sampleRate int) (*Recognizer, error) {
+	capture, err := NewAudioCapture(sampleRate)
 	if err != nil {
-		return nil, err
-	}
-	stt, err := NewGigaSTTClient("ws://127.0.0.1:9876/v1/ws")
-	if err != nil {
-		capture.Stop()
 		return nil, err
 	}
 	return &Recognizer{
-		capture: capture,
-		stt:     stt,
-		rawChan: make(chan string, 10),
+		capture:    capture,
+		stt:        NewGigaSTTClient(serverURL),
+		rawChan:    make(chan string, 10),
+		sampleRate: sampleRate,
 	}, nil
 }
 
@@ -37,17 +36,18 @@ func (r *Recognizer) Start(ctx context.Context) error {
 		return fmt.Errorf("Recognizer уже запущен")
 	}
 
+	// Сначала микрофон: нужно узнать фактическую частоту устройства,
+	// чтобы правильно настроить gigastt (особенно на Windows).
 	if err := r.capture.Start(); err != nil {
 		return err
 	}
 
-	rawChan, err := r.stt.TranscribeStream(ctx, r.capture.AudioChan())
+	rawChan, err := r.stt.TranscribeStream(ctx, r.capture.AudioChan(), r.capture.SampleRate())
 	if err != nil {
 		r.capture.Stop()
 		return err
 	}
 
-	// Пробрасываем сырой JSON в наш канал.
 	go func() {
 		for raw := range rawChan {
 			select {
@@ -80,6 +80,7 @@ func (r *Recognizer) Unmute() {
 
 // Stop останавливает Recognizer.
 func (r *Recognizer) Stop() {
+	r.stt.Close()
 	r.capture.Stop()
 	r.started = false
 }

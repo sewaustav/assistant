@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
+	"github.com/sewaustav/assistant/internal/apps"
 	"github.com/sewaustav/assistant/internal/cli"
 	"github.com/sewaustav/assistant/internal/config"
 	"github.com/sewaustav/assistant/internal/dispatcher"
@@ -16,15 +17,20 @@ import (
 	"github.com/sewaustav/assistant/internal/llm"
 	"github.com/sewaustav/assistant/internal/local"
 	"github.com/sewaustav/assistant/internal/logging"
-	"github.com/sewaustav/assistant/internal/speech_recognition"
+	"github.com/sewaustav/assistant/internal/paths"
 	"github.com/sewaustav/assistant/internal/tools"
 )
 
+// version подставляется при сборке:
+// go build -ldflags "-X main.version=1.0.0"
+var version = "dev"
+
 func main() {
+	cli.Version = version
+
 	// 0. Логи — в файл, ДО всего остального.
 	logPath, err := logging.Init()
 	if err != nil {
-		// Если лог не открылся — падаем в stderr, но не молчим.
 		fmt.Fprintf(os.Stderr, "Не удалось инициализировать логи: %v\n", err)
 	} else {
 		log.Printf("[main] Логи: %s", logPath)
@@ -43,20 +49,35 @@ func main() {
 	log.Printf("[main] Режим: %s, TTS speaker: %s, ASR enabled: %v",
 		cfg.Mode, cfg.TTS.Speaker, cfg.ASR.Enabled)
 
+	// Приложения: системные + встроенные + пользовательские из config.json.
+	appResolver := apps.New(customApps(cfg.Apps))
+
 	cmds, err := config.LoadCommands()
 	if err != nil {
 		log.Fatalf("Commands: %v", err)
 	}
-	
-	builtinTools := tools.BuildFromConfig(cmds)
-	
+
+	builtinTools := tools.BuildFromConfig(cmds, tools.Options{
+		Apps:       appResolver,
+		SearchURL:  cfg.SearchURL,
+		BrowserURL: "https://www.google.com",
+	})
+
 	var localTools []local.Tool
+	var llmTools []llm.Tool
 	for _, t := range builtinTools {
 		if lt, ok := t.(local.Tool); ok {
-			localTools = append(localTools, lt)
+			if enabled, ok := t.(interface{ LocalEnabled() bool }); !ok || enabled.LocalEnabled() {
+				localTools = append(localTools, lt)
+			}
+		}
+		if lt, ok := t.(llm.Tool); ok {
+			if enabled, ok := t.(interface{ LLMEnabled() bool }); !ok || enabled.LLMEnabled() {
+				llmTools = append(llmTools, lt)
+			}
 		}
 	}
-	
+
 	localHandler, err := local.New(localTools)
 	if err != nil {
 		log.Fatalf("Local handler: %v", err)
@@ -67,61 +88,31 @@ func main() {
 	cmdChan := make(chan string, 10)
 	responseChan := make(chan string, 10)
 
-	cliClient := cli.New(cfg, textInputChan, cmdChan)
+	cliClient := cli.New(cfg, textInputChan, cmdChan, appResolver)
 	go cliClient.Run()
 
 	mgr := lifecycle.NewManager()
 
-	gigasttPath := filepath.Join(os.Getenv("HOME"), ".cargo/bin/gigastt")
-	mgr.Register("gigastt", lifecycle.NewGigaSTT(gigasttPath))
-
-	projectRoot, _ := os.Getwd()
-	ttsDir := filepath.Join(projectRoot, "tts-server")
-	pythonPath := filepath.Join(ttsDir, ".venv/bin/python")
-	mgr.Register("silero", lifecycle.NewSilero(pythonPath, ttsDir))
-
-	var recognizer *speech_recognition.Recognizer
-
-	if cfg.Mode == config.ModeVoice {
-		cli.PrintInfo("Запускаю сервера...")
-
-		if err := mgr.Start(ctx, "gigastt"); err != nil {
-			log.Fatalf("[main] gigastt: %v", err)
-		}
-		if err := mgr.Start(ctx, "silero"); err != nil {
-			log.Fatalf("[main] silero: %v", err)
-		}
-
-		recognizer, err = speech_recognition.NewRecognizer()
-		if err != nil {
-			log.Fatalf("[main] Recognizer: %v", err)
-		}
-		if err := recognizer.Start(ctx); err != nil {
-			log.Fatalf("[main] Recognizer start: %v", err)
-		}
-
-		go func() {
-			for raw := range recognizer.RawChan() {
-				select {
-				case voiceChan <- raw:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-
-		cli.PrintInfo("Всё загружено. Слушаю...")
+	gigasttPath := paths.FindGigaSTT(cfg.Paths.GigaSTT)
+	if gigasttPath != "" {
+		mgr.Register("gigastt", lifecycle.NewGigaSTT(gigasttPath, asrArgs(cfg)))
+		log.Printf("[main] gigastt: %s", gigasttPath)
 	} else {
-		cli.PrintInfo("Текстовый режим. Введите сообщение.")
+		log.Printf("[main] gigastt не найден")
 	}
 
-	var llmTools []llm.Tool
-	for _, t := range builtinTools {
-		if lt, ok := t.(llm.Tool); ok {
-			llmTools = append(llmTools, lt)
-		}
+	ttsDir := paths.FindTTSDir(cfg.Paths.TTSDir)
+	pythonPath := ""
+	if ttsDir != "" {
+		pythonPath = paths.FindPython(ttsDir, cfg.Paths.Python)
 	}
-	
+	if pythonPath != "" {
+		mgr.Register("silero", lifecycle.NewSilero(pythonPath, ttsDir))
+		log.Printf("[main] silero: %s (%s)", pythonPath, ttsDir)
+	} else {
+		log.Printf("[main] Python для Silero не найден (tts_dir=%s)", ttsDir)
+	}
+
 	llmHandler := llm.New(cfg, llmTools)
 
 	disp := dispatcher.New(
@@ -130,7 +121,7 @@ func main() {
 		textInputChan,
 		cmdChan,
 		responseChan,
-		recognizer,
+		nil,
 		mgr,
 		cliClient,
 		localHandler,
@@ -145,8 +136,42 @@ func main() {
 		}
 	}()
 
+	// Голосовой режим: если что-то не готово — не падаем, а честно
+	// переключаемся в текстовый режим.
+	if cfg.Mode == config.ModeVoice {
+		if !cfg.ASR.Enabled {
+			cli.PrintError(fmt.Errorf("распознавание речи выключено (asr.enabled=false)"))
+			disp.SwitchMode(ctx, config.ModeText)
+		} else if gigasttPath == "" {
+			cli.PrintError(fmt.Errorf("gigastt не найден"))
+			cli.PrintInfo("Установи его командой: cargo install gigastt")
+			disp.SwitchMode(ctx, config.ModeText)
+		} else {
+			cli.PrintInfo("Запускаю сервера...")
+			if err := disp.StartVoice(ctx); err != nil {
+				if ctx.Err() != nil {
+					// Пользователь нажал /quit или Ctrl+C во время старта.
+					disp.Close()
+					mgr.StopAll()
+					return
+				}
+				cli.PrintError(err)
+				cli.PrintInfo("Переключаюсь в текстовый режим. Голосовые команды будут доступны после исправления.")
+				disp.SwitchMode(ctx, config.ModeText)
+			} else {
+				cli.PrintInfo("Всё загружено. Слушаю...")
+			}
+		}
+	} else {
+		cli.PrintInfo("Текстовый режим. Введите сообщение или /help.")
+	}
+
+	if logPath != "" {
+		cli.PrintInfo("Лог: %s", logPath)
+	}
+
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	select {
 	case <-sigChan:
@@ -155,10 +180,37 @@ func main() {
 		cli.PrintInfo("Контекст отменён.")
 	}
 
-	if recognizer != nil {
-		recognizer.Stop()
-	}
 	disp.Close()
 	mgr.StopAll()
 	cli.PrintInfo("Завершено.")
+}
+
+func customApps(in map[string]config.AppConfig) map[string]apps.CustomApp {
+	out := make(map[string]apps.CustomApp, len(in))
+	for key, cfg := range in {
+		out[key] = apps.CustomApp{
+			Name:    cfg.Name,
+			Aliases: cfg.Aliases,
+			Linux:   cfg.Linux,
+			Windows: cfg.Windows,
+			Darwin:  cfg.Darwin,
+		}
+	}
+	return out
+}
+
+// asrArgs собирает аргументы для `gigastt serve`.
+func asrArgs(cfg *config.Config) []string {
+	var args []string
+	if u, err := url.Parse(cfg.ASR.ServerURL); err == nil && u.Port() != "" && u.Port() != "9876" {
+		args = append(args, "--port", u.Port())
+	}
+	if cfg.ASR.ModelDir != "" {
+		args = append(args, "--model-dir", cfg.ASR.ModelDir)
+	}
+	if cfg.ASR.VAD {
+		args = append(args, "--vad", "--endpoint-mode", "assistant")
+	}
+	args = append(args, cfg.ASR.ExtraArgs...)
+	return args
 }

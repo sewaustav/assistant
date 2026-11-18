@@ -5,6 +5,7 @@ package lifecycle
 import (
 	"os/exec"
 	"strconv"
+	"time"
 )
 
 func configureProcessGroup(cmd *exec.Cmd) {
@@ -12,8 +13,11 @@ func configureProcessGroup(cmd *exec.Cmd) {
 	// Оставляем пустым: taskkill /T сам найдёт дерево по PID.
 }
 
-func killProcessTree(cmd *exec.Cmd) {
-	if cmd.Process == nil {
+// killProcessTree убивает дерево процессов через taskkill.
+// done закрывается горутиной, которая уже вызвала cmd.Wait(); повторно Wait
+// вызывать нельзя, поэтому завершения ждём именно по этому каналу.
+func killProcessTree(cmd *exec.Cmd, done <-chan struct{}) {
+	if cmd == nil || cmd.Process == nil {
 		return
 	}
 
@@ -24,6 +28,13 @@ func killProcessTree(cmd *exec.Cmd) {
 		// Fallback: убить хотя бы прямой процесс.
 		_ = cmd.Process.Kill()
 	}
+
+	if done == nil {
+		return
+	}
 	// Ждём завершения, чтобы не оставить зомби.
-	_ = cmd.Wait()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+	}
 }

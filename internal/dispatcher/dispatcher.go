@@ -58,6 +58,11 @@ type Dispatcher struct {
 
 	stopFn func()
 
+	// Фоновый запуск TTS-сервера.
+	sileroMu     sync.Mutex
+	sileroCancel context.CancelFunc
+	sileroGen    uint64
+
 	// handlers
 	llm   *llm.Handler
 	local *local.Handler
@@ -77,10 +82,7 @@ func New(
 	llm *llm.Handler,
 	stopFn func(),
 ) *Dispatcher {
-	ttsClient, err := tts.New(cfg.TTS.ServerURL)
-	if err != nil {
-		log.Fatalf("TTS init: %v", err)
-	}
+	ttsClient := tts.New(cfg.TTS.ServerURL, cfg.TTS.SampleRate)
 
 	return &Dispatcher{
 		state: &State{
@@ -102,9 +104,25 @@ func New(
 }
 
 func (d *Dispatcher) Close() {
+	d.stopVoice()
 	if d.tts != nil {
 		d.tts.Close()
 	}
+}
+
+// StartVoice запускает распознавание (используется при старте приложения).
+func (d *Dispatcher) StartVoice(ctx context.Context) error {
+	return d.startVoice(ctx)
+}
+
+// SwitchMode переключает режим (используется при старте и из CLI).
+func (d *Dispatcher) SwitchMode(ctx context.Context, mode config.Mode) {
+	d.switchMode(ctx, mode)
+}
+
+// StopVoice останавливает распознавание и сервера.
+func (d *Dispatcher) StopVoice() {
+	d.stopVoice()
 }
 
 // Run — главный цикл диспетчера.
@@ -166,7 +184,12 @@ func (d *Dispatcher) handleCommand(ctx context.Context, cmd string) {
 			d.responseChan <- "Использование: /mode voice | /mode text"
 			return
 		}
-		d.switchMode(ctx, config.Mode(parts[1]))
+		mode := config.Mode(strings.ToLower(parts[1]))
+		if mode != config.ModeVoice && mode != config.ModeText {
+			d.responseChan <- "Режим должен быть voice или text"
+			return
+		}
+		d.switchMode(ctx, mode)
 
 	case "quit", "exit":
 		log.Println("[dispatcher] Команда выхода.")
@@ -175,7 +198,7 @@ func (d *Dispatcher) handleCommand(ctx context.Context, cmd string) {
 		}
 
 	default:
-		d.responseChan <- fmt.Sprintf("Неизвестная команда: /%s", parts[0])
+		d.responseChan <- fmt.Sprintf("Неизвестная команда: /%s. Напиши /help", parts[0])
 	}
 }
 
@@ -230,6 +253,8 @@ func (d *Dispatcher) handleRaw(ctx context.Context, raw string) {
 	case "final":
 		log.Printf("[dispatcher][final] %s (conf=%.2f)", msg.Text, msg.Confidence)
 		d.handleText(ctx, msg.Text)
+	case "error":
+		log.Printf("[dispatcher][gigastt error] %s", raw)
 	}
 }
 
@@ -239,15 +264,17 @@ func (d *Dispatcher) handleText(ctx context.Context, text string) {
 	}
 	log.Printf("[dispatcher] Обрабатываю: %q", text)
 
-	if d.state.Mode == config.ModeVoice {
-		cli.PrintUser(text)
-	}
+	cli.PrintUser(text)
 
 	var response string
 	var err error
 
 	if d.cfg.LLM.Enabled {
 		response, err = d.llm.Handle(ctx, text)
+		if err != nil {
+			log.Printf("[dispatcher] LLM ошибка, пробую локальные команды: %v", err)
+			response, err = d.local.Handle(ctx, text)
+		}
 	} else {
 		response, err = d.local.Handle(ctx, text)
 	}
@@ -257,27 +284,37 @@ func (d *Dispatcher) handleText(ctx context.Context, text string) {
 		d.responseChan <- fmt.Sprintf("Ошибка: %v", err)
 		return
 	}
+	if strings.TrimSpace(response) == "" {
+		response = "Готово."
+	}
 
 	// TTS в голосовом режиме.
-	if d.state.Mode == config.ModeVoice && d.recognizer != nil {
-		d.recognizer.Mute()
-
-		duration, err := d.tts.Speak(ctx, response, d.cfg.TTS.Speaker)
-		if err != nil {
-			log.Printf("[dispatcher] TTS ошибка: %v", err)
-			d.recognizer.Unmute()
-			d.responseChan <- fmt.Sprintf("TTS ошибка: %v", err)
-			return
-		}
-
-		echoTail := time.Duration(d.cfg.TTS.EchoTailMs) * time.Millisecond
-		time.Sleep(echoTail)
-
-		log.Printf("[dispatcher] TTS отыграл %.2f сек + хвост %v", duration.Seconds(), echoTail)
-		d.recognizer.Unmute()
+	if d.state.Mode == config.ModeVoice && d.cfg.TTS.Enabled {
+		d.speak(ctx, response)
 	}
 
 	d.responseChan <- response
+}
+
+// speak озвучивает ответ и на время глушит микрофон.
+func (d *Dispatcher) speak(ctx context.Context, response string) {
+	if d.recognizer != nil {
+		d.recognizer.Mute()
+		defer d.recognizer.Unmute()
+	}
+
+	duration, err := d.tts.Speak(ctx, response, d.cfg.TTS.Speaker)
+	if err != nil {
+		log.Printf("[dispatcher] TTS ошибка: %v", err)
+		return
+	}
+
+	echoTail := time.Duration(d.cfg.TTS.EchoTailMs) * time.Millisecond
+	select {
+	case <-ctx.Done():
+	case <-time.After(echoTail):
+	}
+	log.Printf("[dispatcher] TTS отыграл %.2f сек + хвост %v", duration.Seconds(), echoTail)
 }
 
 func (d *Dispatcher) State() *State {
@@ -286,16 +323,25 @@ func (d *Dispatcher) State() *State {
 
 // startVoice поднимает сервера и запускает Recognizer.
 func (d *Dispatcher) startVoice(ctx context.Context) error {
+	if !d.cfg.ASR.Enabled {
+		return fmt.Errorf("распознавание речи выключено (asr.enabled=false)")
+	}
+	if !d.mgr.Registered("gigastt") {
+		return fmt.Errorf("gigastt не найден. Установи: cargo install gigastt")
+	}
+
 	// 1. Сервера.
 	if err := d.mgr.Start(ctx, "gigastt"); err != nil {
 		return fmt.Errorf("gigastt: %w", err)
 	}
-	if err := d.mgr.Start(ctx, "silero"); err != nil {
-		return fmt.Errorf("silero: %w", err)
+	// TTS не должен мешать распознаванию: Silero грузится в фоне,
+	// а если он не поднялся — просто отвечаем текстом.
+	if d.cfg.TTS.Enabled && d.mgr.Registered("silero") {
+		d.startSilero(ctx)
 	}
 
 	// 2. Recognizer — создаём заново.
-	rec, err := speech_recognition.NewRecognizer()
+	rec, err := speech_recognition.NewRecognizer(d.cfg.ASR.ServerURL, d.cfg.ASR.SampleRate)
 	if err != nil {
 		return fmt.Errorf("recognizer: %w", err)
 	}
@@ -319,12 +365,59 @@ func (d *Dispatcher) startVoice(ctx context.Context) error {
 	return nil
 }
 
+// startSilero поднимает TTS-сервер в фоне, чтобы загрузка модели
+// не задерживала запуск распознавания речи.
+func (d *Dispatcher) startSilero(ctx context.Context) {
+	d.sileroMu.Lock()
+	if d.sileroCancel != nil {
+		d.sileroMu.Unlock()
+		return
+	}
+	d.sileroGen++
+	gen := d.sileroGen
+	startCtx, cancel := context.WithCancel(ctx)
+	d.sileroCancel = cancel
+	d.sileroMu.Unlock()
+
+	go func() {
+		err := d.mgr.Start(startCtx, "silero")
+		if err != nil && startCtx.Err() == nil {
+			log.Printf("[dispatcher] silero не запустился, TTS будет недоступен: %v", err)
+		}
+
+		d.sileroMu.Lock()
+		if d.sileroGen == gen {
+			d.sileroCancel = nil
+		}
+		d.sileroMu.Unlock()
+		cancel()
+	}()
+}
+
+// stopSilero прерывает запуск TTS-сервера (если он ещё идёт) и гасит его.
+func (d *Dispatcher) stopSilero() {
+	d.sileroMu.Lock()
+	cancel := d.sileroCancel
+	d.sileroCancel = nil
+	d.sileroGen++
+	d.sileroMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if d.mgr.Registered("silero") {
+		_ = d.mgr.Stop("silero")
+	}
+}
+
 // stopVoice гасит Recognizer и сервера.
 func (d *Dispatcher) stopVoice() {
 	if d.recognizer != nil {
 		d.recognizer.Stop()
 		d.recognizer = nil
 	}
-	_ = d.mgr.Stop("gigastt")
-	_ = d.mgr.Stop("silero")
+	d.stopSilero()
+	if d.mgr.Registered("gigastt") {
+		_ = d.mgr.Stop("gigastt")
+	}
 }

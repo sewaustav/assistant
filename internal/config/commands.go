@@ -3,13 +3,13 @@ package config
 type CommandsConfig map[string]CommandConfig
 
 type CommandConfig struct {
-	Description  string                       `json:"description"`
-	Keywords     []string                     `json:"keywords"`
-	LLMEnabled   bool                         `json:"llm_enabled"`
-	LocalEnabled bool                         `json:"local_enabled"`
-	Platforms    []string                     `json:"platforms"`
-	Parameters   map[string]ParameterConfig   `json:"parameters,omitempty"`
-	Action       ActionConfig                 `json:"action"`
+	Description  string                     `json:"description"`
+	Keywords     []string                   `json:"keywords"`
+	LLMEnabled   bool                       `json:"llm_enabled"`
+	LocalEnabled bool                       `json:"local_enabled"`
+	Platforms    []string                   `json:"platforms"`
+	Parameters   map[string]ParameterConfig `json:"parameters,omitempty"`
+	Action       ActionConfig               `json:"action"`
 }
 
 type ParameterConfig struct {

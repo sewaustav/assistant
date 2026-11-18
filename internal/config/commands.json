@@ -7,17 +7,61 @@
     "platforms": ["linux", "windows", "darwin"],
     "action": {"type": "builtin", "name": "time"}
   },
-  "browser": {
-    "description": "Open the default web browser",
-    "keywords": ["открой браузер", "запусти браузер", "браузер"],
+  "date": {
+    "description": "Get today's date",
+    "keywords": ["дата", "какое сегодня число", "какой сегодня день"],
     "llm_enabled": true,
     "local_enabled": true,
     "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "date"}
+  },
+  "browser": {
+    "description": "Open the default web browser",
+    "keywords": ["браузер", "открой браузер", "запусти браузер", "ютуб", "youtube", "вк", "vk", "гугл", "google", "яндекс", "yandex", "открой сайт", "телеграм", "telegram", "гитхаб", "github", "карты", "погода", "почта"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "parameters": {
+      "url": {"type": "string", "description": "URL to open", "required": false}
+    },
     "action": {"type": "builtin", "name": "browser"}
+  },
+  "sites": {
+    "description": "Open a popular website",
+    "keywords": ["карты", "погода", "телеграм", "telegram", "гитхаб", "github", "почта", "сайт"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "parameters": {
+      "url": {"type": "string", "description": "URL to open", "required": false}
+    },
+    "action": {"type": "builtin", "name": "browser"}
+  },
+  "search_web": {
+    "description": "Search the web in the default browser",
+    "keywords": ["найди в интернете", "поищи в интернете", "загугли", "найди", "поищи", "поиск"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "parameters": {
+      "query": {"type": "string", "description": "Search query", "required": true}
+    },
+    "action": {"type": "builtin", "name": "search_web"}
+  },
+  "open_app": {
+    "description": "Open an installed application by name",
+    "keywords": ["открой", "запусти", "открыть", "запустить", "включи приложение", "программа", "приложение"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "parameters": {
+      "app": {"type": "string", "description": "Application name", "required": true}
+    },
+    "action": {"type": "builtin", "name": "open_app"}
   },
   "select_all": {
     "description": "Select all text",
-    "keywords": ["выдели всё", "выделить всё", "выдели все"],
+    "keywords": ["выдели всё", "выделить всё", "выдели все", "выдели весь текст"],
     "llm_enabled": true,
     "local_enabled": true,
     "platforms": ["linux", "windows", "darwin"],
@@ -49,7 +93,7 @@
   },
   "delete": {
     "description": "Delete selected text",
-    "keywords": ["удали", "удалить", "сотри"],
+    "keywords": ["удали", "удалить", "сотри", "удали текст"],
     "llm_enabled": true,
     "local_enabled": true,
     "platforms": ["linux", "windows", "darwin"],
@@ -62,5 +106,134 @@
     "local_enabled": true,
     "platforms": ["linux", "windows", "darwin"],
     "action": {"type": "builtin", "name": "undo"}
+  },
+  "redo": {
+    "description": "Redo last undone action",
+    "keywords": ["повтори действие", "верни вперёд", "redo"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "redo"}
+  },
+  "close_window": {
+    "description": "Close the active window",
+    "keywords": ["закрой окно", "закрой это", "закрой приложение"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "close_window"}
+  },
+  "new_tab": {
+    "description": "Open a new tab",
+    "keywords": ["новая вкладка", "открой вкладку", "создай вкладку"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "new_tab"}
+  },
+  "reload_page": {
+    "description": "Reload the current page",
+    "keywords": ["обнови страницу", "перезагрузи страницу", "обнови"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "reload_page"}
+  },
+  "save": {
+    "description": "Save the current document",
+    "keywords": ["сохрани", "сохранить"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "save"}
+  },
+  "volume_up": {
+    "description": "Turn the volume up",
+    "keywords": ["громче", "прибавь звук", "увеличь громкость", "громкость выше"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "parameters": {
+      "steps": {"type": "integer", "description": "How many volume steps to add", "required": false}
+    },
+    "action": {"type": "builtin", "name": "volume_up"}
+  },
+  "volume_down": {
+    "description": "Turn the volume down",
+    "keywords": ["тише", "убавь звук", "уменьши громкость", "громкость ниже"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "parameters": {
+      "steps": {"type": "integer", "description": "How many volume steps to remove", "required": false}
+    },
+    "action": {"type": "builtin", "name": "volume_down"}
+  },
+  "volume_mute": {
+    "description": "Mute or unmute the sound",
+    "keywords": ["выключи звук", "включи звук", "без звука", "замолчи", "мут"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "volume_mute"}
+  },
+  "media_play_pause": {
+    "description": "Play or pause media",
+    "keywords": ["пауза", "продолжи", "играй", "плей", "воспроизведение"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "media_play_pause"}
+  },
+  "media_next": {
+    "description": "Play the next track",
+    "keywords": ["следующий трек", "следующая песня", "переключи трек"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "media_next"}
+  },
+  "media_prev": {
+    "description": "Play the previous track",
+    "keywords": ["предыдущий трек", "предыдущая песня", "верни трек"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "media_prev"}
+  },
+  "lock_screen": {
+    "description": "Lock the screen",
+    "keywords": ["заблокируй экран", "заблокируй", "блокировка"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "lock_screen"}
+  },
+  "screenshot": {
+    "description": "Take a screenshot",
+    "keywords": ["скриншот", "снимок экрана", "сделай скриншот"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "screenshot"}
+  },
+  "type_text": {
+    "description": "Type text into the active input field",
+    "keywords": ["напиши", "напечатай", "введи текст", "напечатай текст"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "parameters": {
+      "text": {"type": "string", "description": "Text to type", "required": true}
+    },
+    "action": {"type": "builtin", "name": "type_text"}
+  },
+  "help": {
+    "description": "List available voice commands",
+    "keywords": ["помощь", "что ты умеешь", "список команд", "команды", "хелп"],
+    "llm_enabled": true,
+    "local_enabled": true,
+    "platforms": ["linux", "windows", "darwin"],
+    "action": {"type": "builtin", "name": "help"}
   }
 }
